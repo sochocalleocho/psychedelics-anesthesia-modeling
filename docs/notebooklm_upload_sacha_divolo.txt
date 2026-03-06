@@ -1,0 +1,1374 @@
+================================================================================
+ANNOTATED SOURCE CODE COMPILATION: Sacha et al. 2025 vs Di Volo et al. 2019
+Transfer Function Fitting and Simulation Code
+================================================================================
+
+This document compiles key source code files from two research codebases for
+comparison. The code implements the AdEx mean-field transfer function (TF)
+framework: single-neuron simulation, moment computation (mu_V, sigma_V, tau_V),
+polynomial threshold fitting, and mean-field dynamics.
+
+Code lineage: Zerlaut 2016 -> Zerlaut 2018 -> Di Volo 2019 -> Sacha/Martin 2025
+
+All codebases use the same polynomial normalization constants:
+  muV0=-60mV, DmuV0=10mV, sV0=4mV, DsV0=6mV, TvN0=0.5, DTvN0=1.0
+
+================================================================================
+FILE: tf_simulation_fast.py
+SOURCE: Sacha et al. 2025 (code/paper_pipeline_hub/Tf_calc/)
+ANNOTATION: Sacha et al. 2025 -- NumPy-based TF simulator. Sweeps (f_exc,
+f_inh) grid with Poisson input to single AdEx neuron. Key: line 129 has a
+known bug (adaptation frozen during refractory) that was fixed. The fix adds
+w decay during the refractory period to match Brian2 reference behavior.
+================================================================================
+#!/usr/bin/env python3
+"""
+Fast TF simulation using pure numpy (no Brian2 overhead).
+Simulates isolated AdEx neurons receiving Poisson synaptic input,
+sweeping over (f_exc, f_inh) grid to build the transfer function.
+
+Produces output files compatible with theoretical_tools.py fitting.
+
+Usage:
+    python tf_simulation_fast.py --cells FS-RS_5 --range_exc 0.1,30,50 --range_inh 0.1,30,50 --time 5000 --save_name b_e_5
+
++==============================================================================+
+|  KNOWN BUG -- MUST FIX BEFORE RUNNING NEW TF SIMS                           |
++==============================================================================+
+|  In simulate_adex_neuron(), the refractory block (line ~106):                |
+|                                                                              |
+|      if ref_counter > 0:                                                     |
+|          ref_counter -= 1                                                    |
+|          ...                                                                 |
+|          continue      <- skips Heun step; w NEVER decays during refractory  |
+|                                                                              |
+|  Brian2 (reference) lets w decay during refractoriness (only Vm is clamped). |
+|  This inflates mean W_adapt by ~2x -> wrong sigma_V -> P5 coeff 7x too large|
+|  -> TVB awake saturates at ~157 Hz -> LZc inverted (propofol > awake).       |
+|                                                                              |
+|  FIX: Add this line BEFORE the continue:                                     |
+|      w += (a * (Vr - EL) - w) / tauw * dt                                   |
+|  For RS cells (a=0): w += -w / tauw * dt                                     |
+|                                                                              |
+|  Any .npy files generated with the buggy version must be regenerated.        |
++==============================================================================+
+"""
+import numpy as np
+import time
+import os
+import sys
+import argparse
+from multiprocessing import Pool, cpu_count
+
+# Add parent directory for imports
+cwd = os.getcwd()
+parent_dir = os.path.dirname(cwd)
+sys.path.append(parent_dir)
+sys.path.append(cwd)
+
+from cell_library import get_neuron_params_double_cell
+
+
+def get_np_linspace(value: str) -> np.ndarray:
+    """Converts CSV '0.1,30,50' -> np.linspace(0.1, 30, 50)"""
+    parts = [float(x) for x in value.split(',')]
+    if len(parts) == 3:
+        return np.linspace(parts[0], parts[1], int(parts[2]))
+    elif len(parts) == 1:
+        return np.array(parts)
+    else:
+        raise ValueError(f"Expected 1 or 3 values, got {len(parts)}")
+
+
+def simulate_adex_neuron(params_dict, rate_exc_hz, rate_inh_hz, duration_ms, dt=0.1):
+    """
+    Simulate a single AdEx neuron receiving Poisson exc+inh input.
+
+    Returns: (firing_rate_Hz, mean_adaptation_pA, mean_Vm_mV)
+    """
+    # Unpack parameters (all in original units: mV, ms, nS, pF, pA)
+    Cm    = params_dict['Cm']       # pF
+    gL    = params_dict['Gl']       # nS
+    EL    = params_dict['EL']       # mV
+    VT    = params_dict['V_th']     # mV
+    Vr    = params_dict['V_r']      # mV
+    Vcut  = params_dict['V_cut']    # mV
+    DeltaT= params_dict['delta']    # mV
+    a     = params_dict['a']        # nS
+    b     = params_dict['b']        # pA
+    tauw  = params_dict['tau_w']    # ms
+    tau_e = params_dict['tau_e']    # ms
+    tau_i = params_dict['tau_i']    # ms
+    Ee    = params_dict['E_e']      # mV
+    Ei    = params_dict['E_i']      # mV
+    Qe    = params_dict['Q_e']      # nS
+    Qi    = params_dict['Q_i']      # nS
+
+    # Network parameters for Poisson input
+    Ntot  = params_dict['Ntot']
+    pcon  = params_dict['p_con']
+    gei   = params_dict['gei']
+
+    N_exc = int(pcon * (1 - gei) * Ntot)  # number of exc Poisson inputs
+    N_inh = int(pcon * gei * Ntot)         # number of inh Poisson inputs
+
+    nsteps = int(duration_ms / dt)
+
+    # State variables
+    Vm = params_dict.get('V_m', -60.0)  # mV
+    w  = a * (Vm - EL)                   # pA (initial adaptation = a*(Vm-EL))
+    GsynE = 0.0  # nS
+    GsynI = 0.0  # nS
+
+    # Poisson rates: probability of spike per input per timestep
+    p_exc = rate_exc_hz * dt * 1e-3  # Hz * ms * (s/1000ms) = dimensionless
+    p_inh = rate_inh_hz * dt * 1e-3
+
+    # Refractory period
+    t_ref = 5.0  # ms
+    ref_steps = int(t_ref / dt)
+    ref_counter = 0
+
+    spike_count = 0
+    spike_count_record = 0  # spikes in recording window only
+
+    # For mean computation (last 80% of simulation)
+    start_record = int(0.8 * nsteps)
+    w_sum = 0.0
+    vm_sum = 0.0
+    n_recorded = 0
+
+    for step in range(nsteps):
+        # Generate Poisson spikes (binomial approximation)
+        n_exc_spikes = np.random.binomial(N_exc, min(p_exc, 1.0))
+        n_inh_spikes = np.random.binomial(N_inh, min(p_inh, 1.0))
+
+        # Update synaptic conductances (exponential decay + spikes)
+        GsynE += -GsynE / tau_e * dt + Qe * n_exc_spikes
+        GsynI += -GsynI / tau_i * dt + Qi * n_inh_spikes
+
+        if ref_counter > 0:
+            ref_counter -= 1
+            w += (a * (Vr - EL) - w) / tauw * dt  # w decays during refractoriness (matches Brian2)
+            if step >= start_record:
+                w_sum += w
+                vm_sum += Vr
+                n_recorded += 1
+            continue
+
+        # Membrane potential update (Heun method - 2 stage)
+        # Stage 1: compute derivatives at current state
+        I_L = gL * (EL - Vm)
+        I_exp = gL * DeltaT * np.exp(min((Vm - VT) / DeltaT, 20.0))  # clamp exp
+        I_syn_e = -GsynE * (Vm - Ee)
+        I_syn_i = -GsynI * (Vm - Ei)
+
+        dVm1 = (I_L + I_exp + I_syn_e + I_syn_i - w) / Cm  # mV/ms
+        dw1  = (a * (Vm - EL) - w) / tauw                    # pA/ms
+
+        # Stage 2: Euler prediction
+        Vm_pred = Vm + dVm1 * dt
+        w_pred  = w + dw1 * dt
+
+        # Stage 2: derivatives at predicted state
+        I_L2 = gL * (EL - Vm_pred)
+        I_exp2 = gL * DeltaT * np.exp(min((Vm_pred - VT) / DeltaT, 20.0))
+        I_syn_e2 = -GsynE * (Vm_pred - Ee)
+        I_syn_i2 = -GsynI * (Vm_pred - Ei)
+
+        dVm2 = (I_L2 + I_exp2 + I_syn_e2 + I_syn_i2 - w_pred) / Cm
+        dw2  = (a * (Vm_pred - EL) - w_pred) / tauw
+
+        # Heun update (average of two derivatives)
+        Vm += 0.5 * (dVm1 + dVm2) * dt
+        w  += 0.5 * (dw1 + dw2) * dt
+
+        # Spike detection
+        if Vm > Vcut:
+            spike_count += 1
+            if step >= start_record:
+                spike_count_record += 1
+            Vm = Vr
+            w += b
+            ref_counter = ref_steps
+
+        # Record for mean computation
+        if step >= start_record:
+            w_sum += w
+            vm_sum += Vm
+            n_recorded += 1
+
+    # Compute outputs -- match Brian2 original: FR from last 80% of simulation
+    record_duration_s = n_recorded * dt * 1e-3  # seconds
+    firing_rate = spike_count_record / record_duration_s if record_duration_s > 0 else 0.0
+    mean_w = w_sum / n_recorded if n_recorded > 0 else 0.0
+    mean_vm = vm_sum / n_recorded if n_recorded > 0 else 0.0
+
+    return firing_rate, mean_w, mean_vm
+
+
+def simulate_point(args):
+    """Worker function for parallel execution. Simulates both exc and inh neurons at one (fe, fi) point."""
+    exc_params, inh_params, rate_exc, rate_inh, duration_ms, seed = args
+    if seed is not None:
+        np.random.seed(seed)  # Replicates Brian2's per-point seed(0) for deterministic TF
+
+    fr_exc, w_exc, vm_exc = simulate_adex_neuron(exc_params, rate_exc, rate_inh, duration_ms)
+    fr_inh, w_inh, vm_inh = simulate_adex_neuron(inh_params, rate_exc, rate_inh, duration_ms)
+
+    return fr_exc, fr_inh, w_exc, vm_exc, vm_inh
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Fast TF simulation (pure numpy, parallel)',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--cells', type=str, default='FS-RS_5', help='Cell types')
+    parser.add_argument('--range_inh', type=get_np_linspace, default='0.1,30,50')
+    parser.add_argument('--range_exc', type=get_np_linspace, default='0.1,30,50')
+    parser.add_argument('--time', type=float, default=5000, help='Simulation duration (ms)')
+    parser.add_argument('--save_name', type=str, default='b_e_5')
+    parser.add_argument('--n_workers', type=int, default=0, help='Parallel workers (0=auto)')
+    parser.add_argument('--seed', type=int, default=None,
+                        help='Per-point numpy seed (replicates Brian2 seed(0) behavior). '
+                             'Use 0 for deterministic run matching Brian2 reference.')
+    args = parser.parse_args()
+
+    params = get_neuron_params_double_cell(args.cells)
+    range_exc = args.range_exc
+    range_inh = args.range_inh
+    duration_ms = args.time
+
+    Npts_e = len(range_exc)
+    Npts_i = len(range_inh)
+    total_points = Npts_e * Npts_i
+
+    # Build per-neuron parameter dicts
+    exc_params = {
+        'Cm': params['Cm'], 'Gl': params['Gl'], 'EL': params['EL_e'],
+        'V_th': params['V_th'], 'V_r': params['V_r'], 'V_cut': params['V_cut'],
+        'V_m': params['V_m'],
+        'delta': params['delta_e'], 'a': params['a_e'], 'b': params['b_e'],
+        'tau_w': params['tau_w'], 'tau_e': params['tau_e'], 'tau_i': params['tau_i'],
+        'E_e': params['E_e'], 'E_i': params['E_i'],
+        'Q_e': params['Q_e'], 'Q_i': params['Q_i'],
+        'Ntot': params['Ntot'], 'p_con': params['p_con'], 'gei': params['gei'],
+    }
+    inh_params = {
+        'Cm': params['Cm'], 'Gl': params['Gl'], 'EL': params['EL_i'],
+        'V_th': params['V_th'], 'V_r': params['V_r'], 'V_cut': params['V_cut'],
+        'V_m': params['V_m'],
+        'delta': params['delta_i'], 'a': params['a_i'], 'b': params['b_i'],
+        'tau_w': params['tau_w'], 'tau_e': params['tau_e'], 'tau_i': params['tau_i'],
+        'E_e': params['E_e'], 'E_i': params['E_i'],
+        'Q_e': params['Q_e'], 'Q_i': params['Q_i'],
+        'Ntot': params['Ntot'], 'p_con': params['p_con'], 'gei': params['gei'],
+    }
+
+    print(f"Cell type: {args.cells}")
+    print(f"Grid: {Npts_e}x{Npts_i} = {total_points} points")
+    print(f"Duration: {duration_ms} ms per point")
+    print(f"Seed: {args.seed} ({'deterministic' if args.seed is not None else 'random'})")
+    print(f"Exc params: b_e={params['b_e']}, EL_e={params['EL_e']}, delta_e={params['delta_e']}")
+    print(f"Inh params: b_i={params['b_i']}, EL_i={params['EL_i']}, delta_i={params['delta_i']}")
+
+    # Build task list
+    tasks = []
+    for rate_exc in range_exc:
+        for rate_inh in range_inh:
+            tasks.append((exc_params, inh_params, rate_exc, rate_inh, duration_ms, args.seed))
+
+    n_workers = args.n_workers if args.n_workers > 0 else max(1, cpu_count() - 1)
+    print(f"Running with {n_workers} parallel workers...")
+
+    start_time = time.time()
+
+    # Run in parallel
+    with Pool(n_workers) as pool:
+        results = []
+        for i, result in enumerate(pool.imap(simulate_point, tasks)):
+            results.append(result)
+            if (i + 1) % (Npts_i) == 0:
+                row = (i + 1) // Npts_i
+                elapsed = time.time() - start_time
+                eta = elapsed / (i + 1) * (total_points - i - 1)
+                print(f"  row {row}/{Npts_e} done ({i+1}/{total_points}), "
+                      f"elapsed={elapsed:.0f}s, ETA={eta:.0f}s")
+
+    # Reshape results into 2D arrays
+    FRout_exc = np.zeros((Npts_e, Npts_i))
+    FRout_inh = np.zeros((Npts_e, Npts_i))
+    Adapt     = np.zeros((Npts_e, Npts_i))
+    muve      = np.zeros((Npts_e, Npts_i))
+    muvi      = np.zeros((Npts_e, Npts_i))
+
+    idx = 0
+    for i in range(Npts_e):
+        for j in range(Npts_i):
+            fr_exc, fr_inh, w_exc, vm_exc, vm_inh = results[idx]
+            FRout_exc[i, j] = fr_exc
+            FRout_inh[i, j] = fr_inh
+            Adapt[i, j]     = w_exc * 1e-12  # pA -> A (match Brian2 units)
+            muve[i, j]      = vm_exc * 1e-3  # mV -> V (match Brian2 units)
+            muvi[i, j]      = vm_inh * 1e-3  # mV -> V
+            idx += 1
+
+    # Save in the same format as tf_simulation.py
+    os.makedirs('./data/', exist_ok=True)
+    save_name = args.save_name
+
+    np.save(f'./data/ExpTF_Adapt_{Npts_e}x{Npts_i}_{save_name}.npy', Adapt)
+    np.save(f'./data/ExpTF_inh_{Npts_e}x{Npts_i}_{save_name}.npy', FRout_inh)
+    np.save(f'./data/ExpTF_exc_{Npts_e}x{Npts_i}_{save_name}.npy', FRout_exc)
+    np.save(f'./data/ExpTF_muve_{Npts_e}x{Npts_i}_{save_name}.npy', muve)
+    np.save(f'./data/ExpTF_muvi_{Npts_e}x{Npts_i}_{save_name}.npy', muvi)
+    np.save(f'./data/params_range_{Npts_e}x{Npts_i}_{save_name}.npy',
+            np.array([range_exc, range_inh, params], dtype='object'), allow_pickle=True)
+
+    elapsed = time.time() - start_time
+    print(f"\nDone! Total time: {elapsed/60:.1f} min")
+    print(f"Saved to ./data/*_{Npts_e}x{Npts_i}_{save_name}.npy")
+
+    # Quick sanity check
+    print(f"\nSanity check:")
+    print(f"  Exc FR at (5,5) Hz input: {FRout_exc[Npts_e//6, Npts_i//6]:.2f} Hz")
+    print(f"  Exc FR at (15,15) Hz input: {FRout_exc[Npts_e//2, Npts_i//2]:.2f} Hz")
+    print(f"  Max exc FR: {FRout_exc.max():.2f} Hz")
+    print(f"  Min exc FR: {FRout_exc.min():.2f} Hz")
+
+
+if __name__ == '__main__':
+    main()
+
+
+================================================================================
+FILE: theoretical_tools.py
+SOURCE: Sacha et al. 2025 (code/paper_pipeline_hub/Tf_calc/)
+ANNOTATION: Sacha et al. 2025 -- Core moment computation and polynomial
+fitting. Contains make_fit_from_data (two-stage SLSQP + Nelder-Mead),
+effective threshold function, mu/sigma/tau moment formulas. KEY DIFFERENCES
+from Di Volo: uses 10-element polynomial (P[0]-P[9], no log-muGn term),
+fitting uses SLSQP then Nelder-Mead with iterative range adjustment.
+DO NOT MODIFY -- changing this breaks polynomial fitting compatibility.
+================================================================================
+import numpy as np
+# import scipy.special as sp_spec
+# import scipy.integrate as sp_int
+from scipy.optimize import minimize, fixed_point, fsolve
+# import sys
+from scipy.special import erfc, erfcinv
+from scipy.ndimage import maximum_filter
+from math import erf
+
+import sys, pathlib
+sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
+from math import erf
+import argparse
+from functions import *
+from Tf_calc.cell_library import get_neuron_params_double_cell
+
+from matplotlib.animation import FuncAnimation
+from IPython.display import HTML
+import matplotlib.pyplot as plt
+
+#fede functions
+
+def eff_thresh(mu_V, sig_V, tauN_V, params):
+    P_0, P_mu, P_sig, P_tau, P_mu2, P_sig2, P_tau2, P_mu_sig, P_mu_tau, P_sig_tau = params
+    V0 = P_0
+    mu_0 = -60.0*1e-3
+    mu_d = 0.01
+    sig_0 = 0.004
+    sig_d = 0.006
+    tau_0 = 0.5
+    tau_d = 1.0
+
+
+    V1 = (P_mu*(mu_V - mu_0) / mu_d +
+          P_sig*(sig_V - sig_0) / sig_d +
+          P_tau*(tauN_V - tau_0) / tau_d)
+    V2 = (P_mu2*((mu_V - mu_0) / mu_d)**2 +
+          P_sig2*((sig_V - sig_0) / sig_d)**2 +
+          P_tau2*((tauN_V - tau_0) / tau_d)**2 +
+          P_mu_sig*((mu_V - mu_0) / mu_d)*((sig_V - sig_0) / sig_d) +
+          P_mu_tau*((mu_V - mu_0) / mu_d)*((tauN_V - tau_0) / tau_d) +
+          P_sig_tau*((sig_V - sig_0) / sig_d)*((tauN_V - tau_0) / tau_d))
+    return V0 + V1 + V2
+
+def mu_sig_tau_func(fexc, finh, fout,w_ad,params,cell_type, w_prec=False):
+    p = params
+    Q_e,Q_i,tau_e,tau_i,E_e,E_i,C_m,Tw,g_L, gei, ntot, pconnec = p['Q_e']*1e-9,p['Q_i']*1e-9,p['tau_e']*1e-3,p['tau_i']*1e-3,p['E_e']*1e-3,p['E_i']*1e-3, p['Cm']*1e-12, p['tau_w']*1e-3,p['Gl']*1e-9, p['gei'], p['Ntot'], p['p_con']
+
+    if cell_type == "RS":
+        try:
+            a,b,E_L = p['a_e']*1e-9, p['b_e']*1e-12, p['EL_e']*1e-3
+        except KeyError:
+            a,b,E_L = p['a']*1e-9, p['b']*1e-12, p['EL']*1e-3
+    elif cell_type == "FS":
+        try:
+            a,b,E_L = p['a_i']*1e-9, p['b_i']*1e-12, p['EL_i']*1e-3
+        except KeyError:
+            a,b,E_L = p['a']*1e-9, p['b']*1e-12, p['EL']*1e-3
+    f_e = fexc*(1.-gei)*pconnec*ntot;
+    f_i = finh*gei*pconnec*ntot;
+
+    # K_e = (1-gei)*ntot
+    # K_i = gei*ntot
+
+    mu_Ge = f_e*tau_e*Q_e
+    mu_Gi = f_i*tau_i*Q_i
+    mu_G = mu_Ge  + mu_Gi + g_L
+    tau_eff = C_m / mu_G
+    print(finh.shape)
+    if w_prec:
+        print(w_ad.shape)
+        mu_V = (mu_Ge*E_e +  mu_Gi*E_i + g_L*E_L - w_ad) / mu_G
+    else:
+        mu_V = (mu_Ge*E_e +  mu_Gi*E_i + g_L*E_L - fout*Tw*b + a*E_L) / mu_G
+
+    U_e = Q_e / mu_G*(E_e - mu_V)
+    U_i = Q_i / mu_G*(E_i - mu_V)
+
+    sig_V = np.sqrt(f_e*(U_e*tau_e)*(U_e*tau_e) / (2*(tau_eff + tau_e)) + f_i*(U_i*tau_i)*(U_i*tau_i) / (2*(tau_eff + tau_i)))
+
+    tau_V = ((f_e*(U_e*tau_e)*(U_e*tau_e) + f_i*(U_i*tau_i)*(U_i*tau_i)) /
+        (f_e*(U_e*tau_e)*(U_e*tau_e) / (tau_eff + tau_e)  + f_i*(U_i*tau_i)*(U_i*tau_i) / (tau_eff + tau_i)))
+
+    tauN_V = tau_V*g_L / C_m
+
+    return mu_V, sig_V, tau_V, tauN_V
+
+def output_rate(params,mu_V, sig_V, tau_V, tauN_V):
+    f_out = erfc((eff_thresh(mu_V, sig_V, tauN_V, params) - mu_V) / (np.sqrt(2)*sig_V)) / (2*tau_V)
+    # f_out = 0.5*tau_V* (1-erf((eff_thresh(mu_V, sig_V, tauN_V, params) - mu_V) / (np.sqrt(2)*sig_V)))
+    return f_out
+
+def eff_thresh_estimate(ydata, mu_V, sig_V, tau_V):
+    Veff_thresh = mu_V + np.sqrt(2)*sig_V*erfcinv(ydata*2*tau_V)
+    return Veff_thresh
+
+def TF(P,fexc,finh,adapt, El):
+    #Transfer Function
+
+    fe = fexc*(1.-gei)*pconnec*Ntot;
+    fi = finh*gei*pconnec*Ntot;
+
+    muGi = Qi*Ti*fi;
+    muGe = Qe*Te*fe;
+    muG = Gl+muGe+muGi;
+    muV = (muGe*Ee+muGi*Ei+Gl*El-adapt)/muG;
+
+    Tm = Cm/muG;
+
+    Ue =  Qe/muG*(Ee-muV);
+    Ui = Qi/muG*(Ei-muV);
+    sV = np.sqrt(fe*(Ue*Te)*(Ue*Te)/2./(Te+Tm)+fi*(Ui*Ti)*(Ui*Ti)/2./(Ti+Tm));
+
+    fe= fe+1e-9;
+    fi=fi+1e-9;
+    Tv = ( fe*(Ue*Te)*(Ue*Te) + fi*(Qi*Ui)*(Qi*Ui)) /( fe*(Ue*Te)*(Ue*Te)/(Te+Tm) + fi*(Qi*Ui)*(Qi*Ui)/(Ti+Tm) );
+    TvN = Tv*Gl/Cm;
+
+    muV0=-60e-3;
+    DmuV0 = 10e-3;
+    sV0 =4e-3;
+    DsV0= 6e-3;
+    TvN0=0.5;
+    DTvN0 = 1.;
+
+    #Effective threshold
+    # vthr=P[0]+P[1]*(muV-muV0)/DmuV0+P[2]*(sV-sV0)/DsV0+P[3]*(TvN-TvN0)/DTvN0+P[5]*((muV-muV0)/DmuV0)*((muV-muV0)/DmuV0)+P[6]*((sV-sV0)/DsV0)*((sV-sV0)/DsV0)+P[7]*((TvN-TvN0)/DTvN0)*((TvN-TvN0)/DTvN0)+P[8]*(muV-muV0)/DmuV0*(sV-sV0)/DsV0+P[9]*(muV-muV0)/DmuV0*(TvN-TvN0)/DTvN0+P[10]*(sV-sV0)/DsV0*(TvN-TvN0)/DTvN0;
+
+    vthr=P[0]+P[1]*(muV-muV0)/DmuV0+P[2]*(sV-sV0)/DsV0+P[3]*(TvN-TvN0)/DTvN0+P[4]*((muV-muV0)/DmuV0)*((muV-muV0)/DmuV0)+P[5]*((sV-sV0)/DsV0)*((sV-sV0)/DsV0)+P[6]*((TvN-TvN0)/DTvN0)*((TvN-TvN0)/DTvN0)+P[7]*(muV-muV0)/DmuV0*(sV-sV0)/DsV0+P[8]*(muV-muV0)/DmuV0*(TvN-TvN0)/DTvN0+P[9]*(sV-sV0)/DsV0*(TvN-TvN0)/DTvN0;
+
+    frout=.5/TvN*Gl/Cm*(1-erf((vthr-muV)/np.sqrt(2)/sV));
+    # frout=.5*Tv*(1-erf((vthr-muV)/(np.sqrt(2)*sV)));
+
+    return frout;
+##### Maria's stuff #####
+def get_rid_of_nans(vve, vvi, adapt, FF, params, cell_type, return_index=False, w_prec=False):
+    """
+    w_prec : if True use precalculated adaptation from network (adapt) instead of Tw*b*fout
+    """
+    ve2 = vve.flatten()
+    vi2 = vvi.flatten()
+    FF2 = FF.flatten()
+    adapt2= adapt.flatten()
+    print(ve2.shape, vi2.shape, FF2.shape, adapt2.shape)
+    # FF2[FF2<1e-9] = 1e-9
+
+        # Calculate Veff:
+    # muV2, sV2, Tv2, TNv2= mu_sig_tau_func(ve2, vi2, adapt2,params,cell_type)
+    muV2, sV2, Tv2, TNv2= mu_sig_tau_func(ve2, vi2, FF2,adapt2,params,cell_type, w_prec=w_prec)
+    Veff = eff_thresh_estimate(FF2,muV2, sV2, Tv2)
+
+    #delete Nan/Infs
+    nanindex=np.where(np.isnan(Veff))
+    infindex=np.where(np.isinf(Veff))
+
+    bigindex = np.concatenate([nanindex,infindex],axis=1)
+
+    print("this many nans:", len(bigindex[0]))
+    ve2=np.delete(ve2,bigindex)
+    vi2=np.delete(vi2,bigindex)
+    FF2=np.delete(FF2,bigindex)
+    adapt2=np.delete(adapt2,bigindex)
+
+    if return_index:
+        return ve2, vi2, FF2, adapt2, bigindex
+    else:
+        return ve2, vi2, FF2, adapt2
+
+def find_max_error(out_rate, fit_rate, ve, vi, window=12, thresh_pc = 0.9):
+    """"
+    - caclulate the error between estimated (fit_rate) and simulated (out_rate) firing rate
+    - finds the areas with the maximum errors and accordingly returns a range of exc and inh excitatory inputs to focus the fit
+    - it prioritizes lower ranges (more relevant in the simulations) as long as their estimated error is not lower than a percentage (thesh_pc) of the max error
+
+    out_rate  : FR from the single cells experiments
+    fit_rate  : estimated FR through the fitted TF
+    ve, vi    : the exc and inh inputs used for the experiments
+    window    : size of the window to calculate local maxima
+    thresh_pc : percentage of the max local error that should be exceeded to prioritize lower ranges (=1 if no priorities in lower indices is required)
+
+    return
+    range_exc, range_inh : tuples with the ranges for the exc and inh inputs
+    """
+
+    error = np.sqrt((out_rate - fit_rate)**2).T
+    print('mean error = ', np.mean(error))
+
+    if window > len(ve)/3: #If window too large readjust
+        window = int(len(ve)/3)
+    rectangular_size = window
+
+    # Apply a maximum filter to find local maxima in the error array
+    local_maxima = maximum_filter(error, size=rectangular_size)
+
+    # Find the indices of local maxima
+    max_indices = np.argwhere(local_maxima == error)
+
+    # Initialize variables to store the maximum mean error and its corresponding rectangular area
+    max_mean_error_rect = None
+    all_errors = []
+
+    # Iterate over all local maxima
+    for i, j in max_indices:
+        # Calculate the mean error inside the current rectangular area
+        mean_error = np.nanmean(error[max(0, i-rectangular_size):min(error.shape[0], i+rectangular_size+1),
+                                max(0, j-rectangular_size):min(error.shape[1], j+rectangular_size+1)])
+        max_mean_error_rect = (max(0, i-rectangular_size), max(0, j-rectangular_size),
+                                min(error.shape[0], i+rectangular_size+1), min(error.shape[1], j+rectangular_size+1))
+        a = sum(max_mean_error_rect)
+
+        all_errors.append([mean_error, a, max_mean_error_rect])
+
+    all_errors = np.array(all_errors, dtype='object')
+
+    #sort according to indices
+    y=np.argsort(all_errors[:,1],kind='mergesort')
+    all_errors = all_errors[y]
+
+    thresh = np.max(all_errors[:,0]) * thresh_pc #90% of the max error
+
+    #choose lower indices if there is no big difference in the errors
+    for i in range(all_errors.shape[0]):
+        if all_errors[i,0] > thresh:
+            max_mean_error_rect = all_errors[i,2]
+            break
+
+    x_start, y_start, x_end, y_end = max_mean_error_rect
+    range_exc=(ve[y_start],ve[y_end-1])
+    range_inh=(vi[x_start],vi[x_end-1])
+
+    return range_exc, range_inh
+
+################################################################
+##### Now fitting to Transfer Function data
+################################################################
+from scipy.optimize import basinhopping
+
+def make_fit_from_data(DATA,cell_type, params_file, adapt_file, range_exc=None, range_inh=None,w_prec=False, **kwargs):
+    """
+    DATA                : (str) directory for the npy file containing the firing rates from the simulations
+    cell                : (str) cell type to choose the correct parameters of the fit (ex: FS or RS)
+    params_file         : directory to the file containing the ranges and the params
+    adapt_file          : directory to the file containing the adaptation from the experiments
+    range_exc,range_inh : the ranges to focus the fit of the TF
+    w_prec              : if True use precalculated adaptation in calculations of subthreshold metrics (instead of w=Tw*b*FF)
+
+    additional args:
+    name_add            : (str) additional name for the file where the P will be saved
+    loop_n              : (int) how many loops to iterate to minimize the mean error (estimated-simulated)**2
+    window              : (int) size of the rectangle where the local maxima will be estimated
+    thresh_pc           : (float) percentage for the threshold used in the prioritization of the lower input ranges
+    tol,maxiter,method  : tolerance, max iterations and method used for the fit of the v threshold (vthr_) and TF (tf_)
+
+    returns the P coefficients
+    """
+    default_args = {'loop_n': 10,'window': 12,'thresh_pc': 0.9, 'name_add': '',
+        'vthr_tol' : 1e-17, 'vtrh_maxiter': 30000, 'vthr_method': 'SLSQP',
+        'tf_tol' : 1e-17, 'tf_maxiter': 30000, 'tf_method':'nelder-mead', 'MF_comp': False, 'seed': 10}
+
+    #update arguments
+    default_args.update(kwargs)
+
+    loop_n, window, thresh_pc, name_add = default_args['loop_n'],default_args['window'],default_args['thresh_pc'], default_args['name_add']
+    vthr_tol,vtrh_maxiter,vthr_method = default_args['vthr_tol'],default_args['vtrh_maxiter'],default_args['vthr_method']
+    tf_tol, tf_maxiter, tf_method = default_args['tf_tol'],default_args['tf_maxiter'],default_args['tf_method']
+    MF_comp, seed = default_args['MF_comp'], default_args['seed']
+
+
+    FF=np.load(DATA).T #has shape ve*vi bur with the transpose you put the ve to change accross the row, and the vi across the column
+    adapt = np.load(adapt_file).T
+    ve, vi, params = np.load(params_file,allow_pickle=True)
+    vve, vvi = np.meshgrid(ve, vi)
+
+    #remove nan and inf values
+    ve2, vi2, FF2, adapt2 = get_rid_of_nans(vve, vvi, adapt, FF, params, cell_type, w_prec=w_prec)
+
+    #calculate subthresh
+    mu_V, sig_V, tau_V, tauN_V = mu_sig_tau_func(ve2, vi2, FF2,adapt2,params,cell_type, w_prec=w_prec)
+    Veff_thresh = eff_thresh_estimate(FF2,mu_V, sig_V, tau_V)
+
+    # fitting first order Vthr on the phenomenological threshold space
+    print("fitting first order V threshold..")
+
+    params_init = np.ones(10)*1e-3
+
+    def res_func(params):
+        vthresh = eff_thresh(mu_V, sig_V, tauN_V, params)
+        res = np.mean((Veff_thresh - vthresh)**2)
+        return res
+
+    fit = minimize(res_func, params_init,
+               method=vthr_method,tol= vthr_tol, options={ 'disp': True, 'maxiter':vtrh_maxiter, 'seed': seed})
+
+    print("P = ", fit['x'])
+
+    print("Fitting Transfer Function..")
+
+    params_init2 = fit['x']
+
+    # LOOP
+    params_all = []
+    for i in range(loop_n):
+        print("loop n:",i)
+        #adjust range
+        if range_inh or range_exc:
+            mu_V, sig_V, tau_V,tauN_V, FF2 = adjust_ranges(ve, vi, FF,adapt,params,cell_type, range_inh, range_exc, w_prec=w_prec)
+
+        def res2_func(params):
+            res2 = np.mean((output_rate(params,mu_V, sig_V, tau_V, tauN_V) - FF2)**2)
+            return res2
+
+        fit2 = minimize(res2_func, params_init2,
+                        method=tf_method,tol= tf_tol , options={'disp': True, 'maxiter':tf_maxiter, 'seed': seed})
+
+        P = fit2['x']
+
+        #originals - calculate mean error
+        muV, sigV, tauV, tauNV = mu_sig_tau_func(vve, vvi, FF,adapt, params,cell_type, w_prec=w_prec)
+        fit_rate = output_rate(P,muV, sigV, tauV, tauNV)
+        mean_error = np.mean(np.sqrt((FF - fit_rate)**2))
+
+        #renew ranges and params
+        if loop_n>1:
+            range_exc, range_inh = find_max_error(FF, fit_rate, ve, vi, window=window, thresh_pc = thresh_pc)
+            params_init2 = P
+
+        params_all.append([P, mean_error])
+        i+=1
+        seed+=10
+
+    params_all = np.array(params_all,dtype='object')
+    P = params_all[np.argmin(params_all[:,1])][0] #keep the one with the smallest mean error
+
+    file_name = DATA.replace('ExpTF_','')
+    filename = file_name.replace('.npy', f'_fit.npy')
+    print('coefficients saved in ', filename)
+    np.save(filename, np.array(P))
+
+    return P
+
+# [Remaining helper functions: plot_muv, plot_veff, plot_check_fit,
+#  video_check_fit, plot_example_adjust_range, plot_curve, convert_params,
+#  adjust_ranges, OU, run_MF, load_network_mean, calculate_mf_difference,
+#  fit_with_MF omitted for brevity -- see full source file]
+
+
+================================================================================
+FILE: cell_library.py
+SOURCE: Sacha et al. 2025 (code/paper_pipeline_hub/Tf_calc/)
+ANNOTATION: Sacha et al. 2025 -- Neuron parameter configs. Key configs:
+FS-RS_0 (E_L=-64, b_e=0, used for CONFIG1 TF fitting at zero adaptation),
+FS-RS_5 (E_L=-64, b_e=5, Awake baseline), FS-RS_divolo (E_L=-65, b_e=0,
+Di Volo's cell parameters). All configs share: Cm=200pF, Gl=10nS,
+tau_w=500ms, V_th=-50mV, V_r=-65mV, Ntot=10000, p_con=0.05, gei=0.2.
+================================================================================
+"""
+Some configuration of neuronal properties so that we pick up
+within this file
+"""
+from __future__ import print_function
+
+def get_neuron_params_double_cell(NAME, SI_units=False):
+
+    if NAME == 'FS-RS':
+        params = {#Cells
+            'V_m': -60, 'V_r': -65, 'Cm': 200, 'Gl': 10, 'tau_w': 500, 'V_th': -50, 'V_cut' : -30,
+                #Excitatory
+                  'a_e': 0,   'b_e': 30,  'delta_e': 2, 'EL_e': -64,
+                # Inhibitory
+                  'a_i': 0,'b_i': 0,'delta_i': 0.5,'EL_i': -65,
+                # Synaptic
+                   'tau_e': 5, 'tau_i': 5, 'E_e': 0, 'E_i': -80, 'Q_i': 5.0, 'Q_e': 1.5,
+                # Network
+                  'p_con': 0.05, 'gei': 0.2, 'Ntot': 10000}
+    elif NAME == 'FS-RS_10':
+        params = {#Cells
+            'V_m': -60, 'V_r': -65, 'Cm': 200, 'Gl': 10, 'tau_w': 500, 'V_th': -50, 'V_cut' : -30,
+                #Excitatory
+                  'a_e': 0,   'b_e': 10,  'delta_e': 2, 'EL_e': -64,
+                # Inhibitory
+                  'a_i': 0,'b_i': 0,'delta_i': 0.5,'EL_i': -65,
+                # Synaptic
+                   'tau_e': 5, 'tau_i': 5, 'E_e': 0, 'E_i': -80, 'Q_i': 5.0, 'Q_e': 1.5,
+                # Network
+                  'p_con': 0.05, 'gei': 0.2, 'Ntot': 10000}
+    elif NAME == 'FS-RS_faycal':
+        params = {#Cells
+            'V_m': -60, 'V_r': -65, 'Cm': 200, 'Gl': 10, 'tau_w': 500, 'V_th': -50, 'V_cut' : -30,
+                #Excitatory
+                  'a_e': 0,   'b_e': 0,  'delta_e': 2, 'EL_e': -63,
+                # Inhibitory
+                  'a_i': 0,'b_i': 0,'delta_i': 0.5,'EL_i': -65,
+                # Synaptic
+                   'tau_e': 5, 'tau_i': 5, 'E_e': 0, 'E_i': -80, 'Q_i': 5.0, 'Q_e': 1.5,
+                # Network
+                  'p_con': 0.05, 'gei': 0.2, 'Ntot': 10000}
+    elif NAME == 'FS-RS_5':
+        params = {#Cells -- Sacha/Fede config: b_e=5, EL_e=-64 (Awake baseline)
+            'V_m': -60, 'V_r': -65, 'Cm': 200, 'Gl': 10, 'tau_w': 500, 'V_th': -50, 'V_cut' : -30,
+                #Excitatory
+                  'a_e': 0,   'b_e': 5,  'delta_e': 2, 'EL_e': -64,
+                # Inhibitory
+                  'a_i': 0,'b_i': 0,'delta_i': 0.5,'EL_i': -65,
+                # Synaptic
+                   'tau_e': 5, 'tau_i': 5, 'E_e': 0, 'E_i': -80, 'Q_i': 5.0, 'Q_e': 1.5,
+                # Network
+                  'p_con': 0.05, 'gei': 0.2, 'Ntot': 10000}
+    elif NAME == 'FS-RS_5_63':
+        params = {#Cells -- b_e=5, EL_e=-63: awake baseline matched to Martin's E_L,
+                  #        for fitting TF sensitive to both DOI (sigma_V) and propofol (b_e) regimes.
+            'V_m': -60, 'V_r': -65, 'Cm': 200, 'Gl': 10, 'tau_w': 500, 'V_th': -50, 'V_cut' : -30,
+                #Excitatory
+                  'a_e': 0,   'b_e': 5,  'delta_e': 2, 'EL_e': -63,
+                # Inhibitory
+                  'a_i': 0,'b_i': 0,'delta_i': 0.5,'EL_i': -65,
+                # Synaptic
+                   'tau_e': 5, 'tau_i': 5, 'E_e': 0, 'E_i': -80, 'Q_i': 5.0, 'Q_e': 1.5,
+                # Network
+                  'p_con': 0.05, 'gei': 0.2, 'Ntot': 10000}
+    elif NAME == 'FS-RS_prop':
+        params = {#Cells -- actual propofol operating point: b_e=30, tau_i=7, EL_e=-64.
+            'V_m': -60, 'V_r': -65, 'Cm': 200, 'Gl': 10, 'tau_w': 500, 'V_th': -50, 'V_cut' : -30,
+                #Excitatory
+                  'a_e': 0,   'b_e': 30,  'delta_e': 2, 'EL_e': -64,
+                # Inhibitory
+                  'a_i': 0,'b_i': 0,'delta_i': 0.5,'EL_i': -65,
+                # Synaptic
+                   'tau_e': 5, 'tau_i': 7, 'E_e': 0, 'E_i': -80, 'Q_i': 5.0, 'Q_e': 1.5,
+                # Network
+                  'p_con': 0.05, 'gei': 0.2, 'Ntot': 10000}
+    elif NAME == 'FS-RS_0':
+        params = {#Cells
+            'V_m': -60, 'V_r': -65, 'Cm': 200, 'Gl': 10, 'tau_w': 500, 'V_th': -50, 'V_cut' : -30,
+                #Excitatory
+                  'a_e': 0,   'b_e': 0,  'delta_e': 2, 'EL_e': -64,
+                # Inhibitory
+                  'a_i': 0,'b_i': 0,'delta_i': 0.5,'EL_i': -65,
+                # Synaptic
+                   'tau_e': 5, 'tau_i': 5, 'E_e': 0, 'E_i': -80, 'Q_i': 5.0, 'Q_e': 1.5,
+                # Network
+                  'p_con': 0.05, 'gei': 0.2, 'Ntot': 10000}
+    elif NAME == 'FS-RS_divolo':
+        params = {#Cells -- Di Volo 2019 params: EL_e=-65, b_e=0 (fit without adaptation)
+            'V_m': -60, 'V_r': -65, 'Cm': 200, 'Gl': 10, 'tau_w': 500, 'V_th': -50, 'V_cut' : -30,
+                #Excitatory
+                  'a_e': 0,   'b_e': 0,  'delta_e': 2, 'EL_e': -65,
+                # Inhibitory
+                  'a_i': 0,'b_i': 0,'delta_i': 0.5,'EL_i': -65,
+                # Synaptic
+                   'tau_e': 5, 'tau_i': 5, 'E_e': 0, 'E_i': -80, 'Q_i': 5.0, 'Q_e': 1.5,
+                # Network
+                  'p_con': 0.05, 'gei': 0.2, 'Ntot': 10000}
+    elif NAME == 'FS':
+        params = {#Cells
+            'V_m': -60, 'V_r': -65, 'Cm': 200, 'Gl': 10, 'tau_w': 500, 'V_th': -50, 'V_cut' : -30,
+                # Inhibitory
+                  'a': 0,'b': 0,'delta': 0.5,'EL': -65,
+                # Synaptic
+                   'tau_e': 5, 'tau_i': 5, 'E_e': 0, 'E_i': -80, 'Q_i': 5.0, 'Q_e': 1.5,
+                # Network
+                  'p_con': 0.05, 'gei': 0.2, 'Ntot': 10000}
+    elif NAME == 'RS':
+        params = {#Cells
+            'V_m': -60, 'V_r': -65, 'Cm': 200, 'Gl': 10, 'tau_w': 500, 'V_th': -50, 'V_cut' : -30,
+                # Inhibitory
+                  'a': 0,'b': 10,'delta': 2,'EL': -64,
+                # Synaptic
+                   'tau_e': 5, 'tau_i': 5, 'E_e': 0, 'E_i': -80, 'Q_i': 5.0, 'Q_e': 1.5,
+                # Network
+                  'p_con': 0.05, 'gei': 0.2, 'Ntot': 10000}
+    else:
+        print('====================================================')
+        print('------------ CELL NOT RECOGNIZED !! ---------------')
+        print('====================================================')
+
+    if SI_units:
+        print('cell parameters in SI units')
+        # mV to V
+        params['EL_e'], params['EL_i'], params['E_e'], params['E_i'] = 1e-3*params['EL_e'],1e-3*params['EL_i'],1e-3*params['E_e'],1e-3*params['E_i']
+
+        params['V_th'], params['V_r'], params['V_m'], params['V_cut'] =\
+             1e-3*params['V_th'], 1e-3*params['V_r'], 1e-3*params['V_m'], 1e-3*params['V_cut']
+
+        params['delta_e'], params['delta_i'] = 1e-3*params['delta_e'], 1e-3*params['delta_i']
+        # ms to s
+        params['tau_w'],params['tau_e'],params['tau_i'] = 1e-3*params['tau_w'], 1e-3*params['tau_e'],1e-3*params['tau_i']
+        # nS to S
+        params['a_e'], params['a_i'],params['Q_e'], params['Q_i'], params['Gl'] = 1e-9*params['a_e'],1e-9*params['a_i'],1e-9*params['Q_e'],1e-9*params['Q_i'], 1e-9*params['Gl']
+        # pF to F and pA to A
+        params['Cm'], params['b_e'],params['b_i'] = 1e-12*params['Cm'], 1e-12*params['b_e'],1e-12*params['b_i']
+    else:
+        print('cell parameters --NOT-- in SI units')
+
+    return params.copy()
+
+def get_neuron_params(NAME, name='', number=1, SI_units=False):
+
+    if NAME=='FS-cell':
+        params = {'name':name, 'N':number,\
+                  'Gl':10., 'Cm':200.,'Trefrac':5.,\
+                  'EL':-65., 'V_th':-50., 'V_r':-65., 'delta':0.5,\
+                  'a':0., 'b': 0., 'tau_w':500, }
+    elif NAME=='RS-cell':
+        params = {'name':name, 'N':number,\
+                  'Gl':10., 'Cm':200.,'Trefrac':5.,\
+                  'EL':-64., 'V_th':-50., 'V_r':-65., 'delta':2.,\
+                  'a':0., 'b':20., 'tau_w':500.}
+    else:
+        print('====================================================')
+        print('------------ CELL NOT RECOGNIZED !! ---------------')
+        print('====================================================')
+
+    if SI_units:
+        print('cell parameters in SI units')
+        # mV to V
+        params['El'], params['Vthre'], params['Vreset'], params['delta_v'] =\
+            1e-3*params['El'], 1e-3*params['Vthre'], 1e-3*params['Vreset'], 1e-3*params['delta_v']
+        # ms to s
+        params['Trefrac'], params['tauw'] = 1e-3*params['Trefrac'], 1e-3*params['tauw']
+        # nS to S
+        params['a'], params['Gl'] = 1e-9*params['a'], 1e-9*params['Gl']
+        # pF to F and pA to A
+        params['Cm'], params['b'] = 1e-12*params['Cm'], 1e-12*params['b']
+    else:
+        print('cell parameters --NOT-- in SI units')
+
+    return params.copy()
+
+
+
+if __name__=='__main__':
+
+    print(__doc__)
+
+
+================================================================================
+FILE: theoretical_tools.py
+SOURCE: Di Volo et al. 2019 (code/original_repos/di_volo_2019/)
+ANNOTATION: Di Volo et al. 2019 -- Di Volo's version of moment computation
+and fitting. Compare with Sacha's version for differences. KEY DIFFERENCES:
+(1) Uses 11-element polynomial with P4=log(muGn) term (dead in practice,
+multiplied by 0), (2) fitting uses SLSQP then Nelder-Mead (same two-stage
+approach), (3) filter: Fout>0 AND Fout<60, (4) sigma_V formula uses
+(Ti*Ui)**2 instead of (Ui*tau_i)**2 -- mathematically identical.
+================================================================================
+import numpy as np
+import numba
+import scipy.special as sp_spec
+import scipy.integrate as sp_int
+from scipy.optimize import minimize, curve_fit
+import sys
+import matplotlib.pyplot as plt
+from scipy import signal
+from scipy.integrate import quad
+def pseq_params(params):
+    Qe, Te, Ee = params['Qe'], params['Te'], params['Ee']
+    Qi, Ti, Ei = params['Qi'], params['Ti'], params['Ei']
+    Gl, Cm , El = params['Gl'], params['Cm'] , params['El']
+    for key, dval in zip(['Ntot', 'pconnec', 'gei'], [1, 2., 0.5]):
+        if key in params.keys():
+            exec(key+' = params[key]')
+        else: # default value
+            exec(key+' = dval')
+    if 'P' in params.keys():
+        P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10 = params['P']
+    else: # no correction
+        P0 = -45e-3
+        for i in range(1,11):
+            exec('P'+str(i)+'= 0')
+
+    return Qe,Te, Ee, Qi, Ti, Ei, Gl, Cm, El, Ntot, pconnec, gei, P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10
+
+# @numba.jit()
+
+
+def get_fluct_regime_varsup(Fe, Fi, XX,Qe, Te, Ee, Qi, Ti, Ei, Gl, Cm, El, Ntot, pconnec, gei, P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10):
+    # here TOTAL (sum over synapses) excitatory and inhibitory input
+    fe = Fe*(1.-gei)*pconnec*Ntot # default is 1 !!
+    fi = Fi*gei*pconnec*Ntot
+    muGe, muGi = Qe*Te*fe, Qi*Ti*fi
+    muG = Gl+muGe+muGi
+    muV = (muGe*Ee+muGi*Ei+Gl*El-XX)/muG
+    muGn, Tm = muG/Gl, Cm/muG
+
+    Ue, Ui = Qe/muG*(Ee-muV), Qi/muG*(Ei-muV)
+
+    sV = np.sqrt(\
+                 fe*(Ue*Te)**2/2./(Te+Tm)+\
+                 fi*(Ti*Ui)**2/2./(Ti+Tm))
+
+    fe, fi = fe+1e-9, fi+1e-9 # just to insure a non zero division,
+
+    Tv = ( fe*(Ue*Te)**2 + fi*(Ti*Ui)**2 ) /( fe*(Ue*Te)**2/(Te+Tm) + fi*(Ti*Ui)**2/(Ti+Tm) )
+    TvN = Tv*Gl/Cm
+
+    return muV, sV+1e-12, muGn, TvN
+
+
+def mean_and_var_conductance(Fe, Fi, Qe, Te, Ee, Qi, Ti, Ei, Gl, Cm, El, Ntot, pconnec, gei, P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10):
+    # here TOTAL (sum over synapses) excitatory and inhibitory input
+    fe = Fe*(1.-gei)*pconnec*Ntot # default is 1 !!
+    fi = Fi*gei*pconnec*Ntot
+    return Qe*Te*fe, Qi*Ti*fi, Qe*np.sqrt(Te*fe/2.), Qi*np.sqrt(Ti*fi/2.)
+
+
+### FUNCTION, INVERSE FUNCTION
+# @numba.jit()
+def erfc_func(muV, sV, TvN, Vthre, Gl, Cm):
+    return .5/TvN*Gl/Cm*(sp_spec.erfc((Vthre-muV)/np.sqrt(2)/sV))
+
+# @numba.jit()
+def effective_Vthre(Y, muV, sV, TvN, Gl, Cm):
+    Vthre_eff = muV+np.sqrt(2)*sV*sp_spec.erfcinv(\
+                    Y*2.*TvN*Cm/Gl) # effective threshold
+    return Vthre_eff
+
+# @numba.jit()
+def threshold_func(muV, sV, TvN, muGn, P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10):
+    """
+    setting by default to True the square
+    because when use by external modules, coeff[5:]=np.zeros(3)
+    in the case of a linear threshold
+    """
+
+    muV0, DmuV0 = -60e-3,10e-3
+    sV0, DsV0 =4e-3, 6e-3
+    TvN0, DTvN0 = 0.5, 1.
+
+    return P0+P1*(muV-muV0)/DmuV0+\
+        P2*(sV-sV0)/DsV0+P3*(TvN-TvN0)/DTvN0+\
+        0*P4*np.log(muGn)+P5*((muV-muV0)/DmuV0)**2+\
+        P6*((sV-sV0)/DsV0)**2+P7*((TvN-TvN0)/DTvN0)**2+\
+        P8*(muV-muV0)/DmuV0*(sV-sV0)/DsV0+\
+        P9*(muV-muV0)/DmuV0*(TvN-TvN0)/DTvN0+\
+        P10*(sV-sV0)/DsV0*(TvN-TvN0)/DTvN0
+
+# final transfer function template :
+# @numba.jit()
+
+def TF_my_templateup(fe, fi,XX, Qe, Te, Ee, Qi, Ti, Ei, Gl, Cm, El, Ntot, pconnec, gei, P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10):
+    # here TOTAL (sum over synapses) excitatory and inhibitory input
+    if(hasattr(fe, "__len__")):
+        fe[fe<1e-8]=1e-8
+    else:
+        if(fe<1e-8):
+            fe=1e-8
+
+    if(hasattr(fi, "__len__")):
+        fi[fi<1e-8]=1e-8
+    else:
+        if(fi<1e-8):
+            fi=1e-8
+
+    muV, sV, muGn, TvN = get_fluct_regime_varsup(fe, fi,XX, Qe, Te, Ee, Qi, Ti, Ei, Gl, Cm, El, Ntot, pconnec, gei, P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10)
+    Vthre = threshold_func(muV, sV, TvN, muGn, P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10)
+
+    if(hasattr(muV, "__len__")):
+        sV[sV<1e-4]=1e-4
+    else:
+        if(sV<1e-4):
+            sV=1e-4
+
+    Fout_th = erfc_func(muV, sV, TvN, Vthre, Gl, Cm)
+    if(hasattr(Fout_th, "__len__")):
+        Fout_th[Fout_th<1e-8]=1e-8
+    else:
+        if(Fout_th<1e-8):
+            Fout_th=1e-8
+
+    return Fout_th
+
+
+def fitting_Vthre_then_Fout(Fout, Fe_eff, fiSim,w, params,\
+                               maxiter=50000, xtol=1e-5, with_square_terms=False):
+
+    Gl, Cm , El = params['Gl'], params['Cm'] , params['El']
+
+    Fout, Fe_eff, fiSim,w = Fout.flatten(), Fe_eff.flatten(), fiSim.flatten(), w.flatten()
+
+    muV, sV, muGn, TvN = get_fluct_regime_varsup(Fe_eff, fiSim,w, *pseq_params(params))
+    i_non_zeros = np.where((Fout>0.)&(Fout<60.))
+
+    Vthre_eff = effective_Vthre(Fout[i_non_zeros], muV[i_non_zeros],\
+                sV[i_non_zeros], TvN[i_non_zeros], params['Gl'], params['Cm'])
+
+    if with_square_terms:
+        P = np.zeros(11)
+    else:
+        P = np.zeros(5)
+    P[:5] = Vthre_eff.mean(), 1e-3, 1e-3, 1e-3, 1e-3
+
+    def Res(p):
+        if not with_square_terms:
+            pp = np.concatenate([p, np.zeros(6)])
+        else:
+            pp=p
+        vthre = threshold_func(muV[i_non_zeros], sV[i_non_zeros],\
+                               TvN[i_non_zeros], muGn[i_non_zeros], *pp)
+        return np.mean((Vthre_eff-vthre)**2)
+
+    plsq = minimize(Res, P, method='SLSQP',options={'ftol': 1e-15, 'disp': True, 'maxiter':40000})
+
+    P = plsq.x
+
+    def Res(p):
+        if not with_square_terms:
+            params['P'] = np.concatenate([p, np.zeros(6)])
+        else:
+            params['P'] = p
+        return np.mean((Fout-\
+                        TF_my_templateup(Fe_eff, fiSim,w, *pseq_params(params)))**2)
+
+    plsq = minimize(Res, P, method='nelder-mead',\
+            options={'xtol': xtol, 'disp': True, 'maxiter':maxiter})
+
+    params['P'] = P
+
+    diff=(TF_my_templateup(Fe_eff, fiSim,w, *pseq_params(params))-Fout).mean()
+    diff_M=(TF_my_templateup(Fe_eff, fiSim,w, *pseq_params(params))-Fout).max()
+    print("rrrrr",diff,diff_M)
+
+    plt.plot(fiSim,Fout,'rd',fiSim,TF_my_templateup(Fe_eff, fiSim,w, *pseq_params(params)),'bs')
+    plt.show()
+    thrplot=threshold_func(muV, sV,TvN, muGn, *(plsq.x))
+
+    plt.plot(muV,Fout,'rd',muV,erfc_func(muV, sV, TvN, thrplot, Gl, Cm),'bd')
+    plt.show()
+    plt.plot(muV,erfc_func(muV, 4e-3, 0.5, thrplot, Gl, Cm),'bd')
+    plt.show()
+
+    if with_square_terms:
+        return P
+    else:
+        return np.concatenate([plsq.x, np.zeros(6)])
+
+def make_fit_from_data(DATA, with_square_terms=False):
+
+    MEANfreq, SDfreq, Fe_eff, fiSim, params,w = np.load(DATA)
+
+    Fe_eff, Fout = np.array(Fe_eff), np.array(MEANfreq)
+    levels = fiSim # to store for colors
+    fiSim = np.meshgrid(np.zeros(Fe_eff.shape[1]), fiSim)[1]
+
+    P = fitting_Vthre_then_Fout(Fout, Fe_eff, fiSim,w, params,\
+                                with_square_terms=with_square_terms)
+
+    # then we save it:
+    filename = DATA.replace('.npy', '_fit.npy')
+    np.save(filename, np.array(P))
+
+    return P
+
+
+================================================================================
+FILE: cell_library.py
+SOURCE: Di Volo et al. 2019 (code/original_repos/di_volo_2019/)
+ANNOTATION: Di Volo et al. 2019 -- Cell parameter definitions. Key: RS-cellbis
+(E_L=-65, a=0, b=100, delta_v=2) -- this is the cell used for the Di Volo
+polynomial. Compare with Sacha's FS-RS_divolo which matches except b=0.
+Note RS-cell has a=4, b=40 (different from Sacha's RS-cell which has b=20).
+Also note RS-cell_UD with E_L=-63 and RS-cell_Try with E_L=-58.73.
+================================================================================
+"""
+Some configuration of neuronal properties so that we pick up
+within this file
+"""
+from __future__ import print_function
+
+def get_neuron_params(NAME, name='', number=1, SI_units=False):
+
+    if NAME=='LIF':
+        params = {'name':name, 'N':number,\
+                  'Gl':10., 'Cm':150.,'Trefrac':5.,\
+                  'El':-60., 'Vthre':-50., 'Vreset':-60., 'delta_v':0.,\
+                  'a':0., 'b': 0., 'tauw':1e9}
+    elif NAME=='EIF':
+        params = {'name':name, 'N':number,\
+                  'Gl':10., 'Cm':150.,'Trefrac':5.,\
+                  'El':-60., 'Vthre':-50., 'Vreset':-60., 'delta_v':2.,\
+                  'a':0., 'b':0., 'tauw':1e9}
+    elif NAME=='AdExp':
+        params = {'name':name, 'N':number,\
+                  'Gl':10., 'Cm':150.,'Trefrac':5.,\
+                  'El':-60., 'Vthre':-50., 'Vreset':-60., 'delta_v':2.,\
+                  'a':4., 'b':20., 'tauw':500.}
+
+    elif NAME=='FS-cell':
+        params = {'name':name, 'N':number,\
+                  'Gl':10., 'Cm':200.,'Trefrac':5,\
+                  'El':-65., 'Vthre':-50., 'Vreset':-65., 'delta_v':0.5,'ampnoise':0.,\
+                  'a':0., 'b': 0., 'tauw':1e9}
+    elif NAME=='RS-cell':
+        params = {'name':name, 'N':number,\
+                  'Gl':10., 'Cm':200.,'Trefrac':5,\
+                  'El':-65., 'Vthre':-50., 'Vreset':-65., 'delta_v':2.,'ampnoise':0.,\
+                  'a':4., 'b':40., 'tauw':500.}
+
+    elif NAME=='RS-cellbis':
+        params = {'name':name, 'N':number,\
+                'Gl':10., 'Cm':200.,'Trefrac':5,\
+                'El':-65., 'Vthre':-50., 'Vreset':-65., 'delta_v':2.,'ampnoise':0.,\
+                'a':0., 'b':100., 'tauw':500.}
+
+    elif NAME=='RS-cell_UD':
+        params = {'name':name, 'N':number,\
+            'Gl':10., 'Cm':200.,'Trefrac':5,\
+                'El':-63., 'Vthre':-50., 'Vreset':-65., 'delta_v':2,'ampnoise':0.,\
+                    'a':0., 'b':40., 'tauw':500.}
+
+    elif NAME=='RS-cell_Try':
+        params = {'name':name, 'N':number,\
+            'Gl':10., 'Cm':200.,'Trefrac':5,\
+            'El':-58.73, 'Vthre':-50., 'Vreset':-58.73, 'delta_v':2,'ampnoise':0.,\
+                'a':0., 'b':0., 'tauw':500.}
+
+    else:
+        print('====================================================')
+        print('------------ CELL NOT RECOGNIZED !! ---------------')
+        print('====================================================')
+
+    if SI_units:
+        #print('cell parameters in SI units')
+        # mV to V
+        params['El'], params['Vthre'], params['Vreset'], params['delta_v'] =\
+            1e-3*params['El'], 1e-3*params['Vthre'], 1e-3*params['Vreset'], 1e-3*params['delta_v']
+        # ms to s
+        params['Trefrac'], params['tauw'] = 1e-3*params['Trefrac'], 1e-3*params['tauw']
+        # nS to S
+        params['a'], params['Gl'] = 1e-9*params['a'], 1e-9*params['Gl']
+        # pF to F and pA to A
+        params['Cm'], params['b'] = 1e-12*params['Cm'], 1e-12*params['b']
+    else:
+        print('cell parameters --NOT-- in SI units')
+
+    return params.copy()
+
+if __name__=='__main__':
+
+    print(__doc__)
+
+
+================================================================================
+FILE: MF_simulation.py
+SOURCE: Di Volo et al. 2019 (code/original_repos/di_volo_2019/)
+ANNOTATION: Di Volo et al. 2019 -- Mean-field simulation. Uses Brian2
+conductance-based synapses (KEY difference from Sacha's NumPy approach).
+Contains build_up_differential_operator for first-order and second-order
+mean-field ODEs, numerical derivatives for covariance equations, and the
+full second-order MF integration loop. Called with RS-cellbis and FS-cell
+on CONFIG1 network. Note: uses T=30ms time constant for the MF integration,
+Ne=8000, Ni=2000 (matching Ntot=10000, gei=0.2).
+================================================================================
+import numpy as np
+from syn_and_connec_library import get_connectivity_and_synapses_matrix
+from cell_library import get_neuron_params
+from theoretical_tools import get_fluct_regime_varsup, pseq_params,TF_my_templateup
+from scipy.special import erf
+from numpy import arange
+from numpy import meshgrid
+from scipy.stats import norm
+import random
+import math
+
+
+
+def build_up_differential_operator_first_order(TF1, TF2, NRN1,NRN2,NTWK, T=5e-3):
+
+    M = get_connectivity_and_synapses_matrix(NTWK, SI_units=True)
+    params = get_neuron_params(NRN1, SI_units=True)
+    reformat_syn_parameters(params, M)
+
+    a, b, tauw = params['a'],\
+        params['b'], params['tauw']
+    Qe, Te, Ee = params['Qe'], params['Te'], params['Ee']
+    Qi, Ti, Ei = params['Qi'], params['Ti'], params['Ei']
+    Gl, Cm , El = params['Gl'], params['Cm'] , params['El']
+    pconnec,Ntot,gei,ext_drive=params['pconnec'], params['Ntot'] , params['gei'],M[0,0]['ext_drive']
+
+    def A0(V, exc_aff=0, inh_aff=0, pure_exc_aff=0):
+        return 1./T*(TF1(V[0]+exc_aff+pure_exc_aff, V[1]+inh_aff,V[2])-V[0])
+
+    def A1(V, exc_aff=0, inh_aff=0, pure_exc_aff=0,inh_fract=0):
+        return 1./T*(TF2(V[0]+exc_aff+inh_fract*pure_exc_aff, V[1]+inh_aff,V[3])-V[1])
+
+    def A2(V, exc_aff=0, inh_aff=0, pure_exc_aff=0):
+
+        fe = (V[0]+exc_aff+pure_exc_aff)*(1.-gei)*pconnec*Ntot # default is 1 !!
+        fi = V[1]*gei*pconnec*Ntot
+        muGe, muGi = Qe*Te*fe, Qi*Ti*fi
+        muG = Gl+muGe+muGi
+        muV = (muGe*Ee+muGi*Ei+Gl*El-V[2])/muG
+
+        return (-V[2]/tauw+(b)*V[0]+a*(muV-El)/tauw)
+
+    def A3(V, exc_aff=0, inh_aff=0, pure_exc_aff=0):
+        return  (-V[3]/1.0+0.*V[1])
+
+    def Diff_OP(V, exc_aff=0, inh_aff=0, pure_exc_aff=0,inh_fract=0):
+        return np.array([A0(V, exc_aff=exc_aff,inh_aff=inh_aff, pure_exc_aff=pure_exc_aff),\
+                         A1(V, exc_aff=exc_aff, inh_aff=inh_aff, pure_exc_aff=pure_exc_aff,inh_fract=inh_fract),\
+                         A2(V, exc_aff=exc_aff, inh_aff=inh_aff, pure_exc_aff=pure_exc_aff),\
+                         A3(V, exc_aff=exc_aff, inh_aff=inh_aff, pure_exc_aff=pure_exc_aff)])
+    return Diff_OP
+
+
+def build_up_differential_operator(TF1, TF2, NRN1,NRN2,NTWK,\
+                                   Ne=8000, Ni=2000, T=5e-3):
+
+    M = get_connectivity_and_synapses_matrix(NTWK, SI_units=True)
+    params = get_neuron_params(NRN1, SI_units=True)
+    reformat_syn_parameters(params, M)
+
+    a, b, tauw = params['a'],\
+        params['b'], params['tauw']
+    Qe, Te, Ee = params['Qe'], params['Te'], params['Ee']
+    Qi, Ti, Ei = params['Qi'], params['Ti'], params['Ei']
+    Gl, Cm , El = params['Gl'], params['Cm'] , params['El']
+    pconnec,Ntot,gei,ext_drive=params['pconnec'], params['Ntot'] , params['gei'],M[0,0]['ext_drive']
+
+    def A0(V, exc_aff=0, inh_aff=0, pure_exc_aff=0):
+        return 1./T*(\
+                 .5*V[2]*diff2_fe_fe(TF1, V[0]+exc_aff+pure_exc_aff, V[1]+inh_aff,V[5])+\
+                 .5*V[3]*diff2_fe_fi(TF1, V[0]+exc_aff+pure_exc_aff, V[1]+inh_aff,V[5])+\
+                 .5*V[3]*diff2_fi_fe(TF1, V[0]+exc_aff+pure_exc_aff, V[1]+inh_aff,V[5])+\
+                 .5*V[4]*diff2_fi_fi(TF1, V[0]+exc_aff+pure_exc_aff, V[1]+inh_aff,V[5])+\
+                 TF1(V[0]+exc_aff+pure_exc_aff, V[1]+inh_aff,V[5])-V[0])
+
+    def A1(V, exc_aff=0, inh_aff=0, pure_exc_aff=0,inh_fract=0):
+        return 1./T*(\
+                  .5*V[2]*diff2_fe_fe(TF2, V[0]+exc_aff+inh_fract*pure_exc_aff, V[1]+inh_aff,V[6])+\
+                  .5*V[3]*diff2_fe_fi(TF2, V[0]+exc_aff+inh_fract*pure_exc_aff, V[1]+inh_aff,V[6])+\
+                  .5*V[3]*diff2_fi_fe(TF2, V[0]+exc_aff+inh_fract*pure_exc_aff, V[1]+inh_aff,V[6])+\
+                  .5*V[4]*diff2_fi_fi(TF2, V[0]+exc_aff+inh_fract*pure_exc_aff, V[1]+inh_aff,V[6])+\
+                  TF2(V[0]+exc_aff+inh_fract*pure_exc_aff, V[1]+inh_aff,V[6])-V[1])
+
+    def A2(V, exc_aff=0, inh_aff=0, pure_exc_aff=0):
+        return 1./T*(\
+                 1./Ne*TF1(V[0]+exc_aff+pure_exc_aff, V[1]+inh_aff,V[5])*(1./T-TF1(V[0]+exc_aff+pure_exc_aff, V[1]+inh_aff,V[5]))+\
+                 (TF1(V[0]+exc_aff+pure_exc_aff, V[1]+inh_aff,V[5])-V[0])**2+\
+                 2.*V[2]*diff_fe(TF1, V[0]+exc_aff+pure_exc_aff, V[1]+inh_aff,V[5])+\
+                 2.*V[3]*diff_fi(TF1, V[0]+exc_aff+pure_exc_aff, V[1]+inh_aff,V[5])+\
+                 -2.*V[2])
+
+    def A3(V, exc_aff=0, inh_aff=0, pure_exc_aff=0,inh_fract=0):
+        return 1./T*(\
+                  (TF1(V[0]+exc_aff+pure_exc_aff, V[1]+inh_aff,V[5])-V[0])*(TF2(V[0]+exc_aff+inh_fract*pure_exc_aff, V[1]+inh_aff,V[6])-V[1])+\
+                  V[2]*diff_fe(TF2, V[0]+exc_aff+inh_fract*pure_exc_aff, V[1]+inh_aff,V[6])+\
+                  V[3]*diff_fe(TF1, V[0]+exc_aff+pure_exc_aff, V[1]+inh_aff,V[5])+\
+                  V[3]*diff_fi(TF2, V[0]+exc_aff+inh_fract*pure_exc_aff, V[1]+inh_aff,V[6])+\
+                  V[4]*diff_fi(TF1, V[0]+exc_aff+pure_exc_aff, V[1]+inh_aff,V[5])+\
+                  -2.*V[3])
+
+    def A4(V, exc_aff=0, inh_aff=0, pure_exc_aff=0,inh_fract=0):
+        return 1./T*(\
+                 1./Ni*TF2(V[0]+exc_aff+inh_fract*pure_exc_aff, V[1]+inh_aff,V[6])*(1./T-TF2(V[0]+exc_aff+inh_fract*pure_exc_aff, V[1]+inh_aff,V[6]))+\
+                 (TF2(V[0]+exc_aff+inh_fract*pure_exc_aff, V[1]+inh_aff,V[6])-V[1])**2+\
+                 2.*V[3]*diff_fe(TF2, V[0]+exc_aff+inh_fract*pure_exc_aff, V[1]+inh_aff,V[6])+\
+                 2.*V[4]*diff_fi(TF2, V[0]+exc_aff+inh_fract*pure_exc_aff, V[1]+inh_aff,V[6])+\
+                 -2.*V[4])
+
+    def A5(V, exc_aff=0, inh_aff=0, pure_exc_aff=0):
+        fe = (V[0]+exc_aff+pure_exc_aff)*(1.-gei)*pconnec*Ntot
+        fi = V[1]*gei*pconnec*Ntot
+        muGe, muGi = Qe*Te*fe, Qi*Ti*fi
+        muG = Gl+muGe+muGi
+        muV = (muGe*Ee+muGi*Ei+Gl*El-V[5])/muG
+        return (-V[5]/tauw+(b)*V[0]+a*(muV-El)/tauw)
+
+    def A6(V, exc_aff=0, inh_aff=0, pure_exc_aff=0):
+        return  (-V[6]/1.0+0.*V[1])
+
+    def Diff_OP(V, exc_aff=0, inh_aff=0, pure_exc_aff=0,inh_fract=0):
+        return np.array([A0(V, exc_aff=exc_aff, inh_aff=inh_aff, pure_exc_aff=pure_exc_aff),\
+                         A1(V, exc_aff=exc_aff, inh_aff=inh_aff, pure_exc_aff=pure_exc_aff,inh_fract=inh_fract),\
+                         A2(V, exc_aff=exc_aff, inh_aff=inh_aff, pure_exc_aff=pure_exc_aff),\
+                         A3(V, exc_aff=exc_aff, inh_aff=inh_aff, pure_exc_aff=pure_exc_aff,inh_fract=inh_fract),\
+                         A4(V, exc_aff=exc_aff, inh_aff=inh_aff, pure_exc_aff=pure_exc_aff,inh_fract=inh_fract),\
+                         A5(V, exc_aff=exc_aff, inh_aff=inh_aff, pure_exc_aff=pure_exc_aff),\
+                         A6(V, exc_aff=exc_aff, inh_aff=inh_aff, pure_exc_aff=pure_exc_aff)])
+    return Diff_OP
+
+
+def reformat_syn_parameters(params, M):
+    """
+        valid only of no synaptic differences between excitation and inhibition
+        """
+
+    params['Qe'], params['Te'], params['Ee'] = M[0,0]['Q'], M[0,0]['Tsyn'], M[0,0]['Erev']
+    params['Qi'], params['Ti'], params['Ei'] = M[1,1]['Q'], M[1,1]['Tsyn'], M[1,1]['Erev']
+    params['pconnec'] = M[0,0]['p_conn']
+    params['Ntot'], params['gei'] = M[0,0]['Ntot'], M[0,0]['gei']
+
+
+##### Derivatives taken numerically,
+def diff_fe(TF, fe, fi,XX, df=1e-5):
+    return (TF(fe+df/2., fi,XX)-TF(fe-df/2.,fi,XX))/df
+
+def diff_fi(TF, fe, fi,XX, df=1e-5):
+    return (TF(fe, fi+df/2.,XX)-TF(fe, fi-df/2.,XX))/df
+
+def diff2_fe_fe(TF, fe, fi,XX, df=1e-5):
+    return (diff_fe(TF, fe+df/2., fi,XX)-diff_fe(TF,fe-df/2.,fi,XX))/df
+
+def diff2_fi_fe(TF, fe, fi,XX, df=1e-5):
+    return (diff_fi(TF, fe+df/2., fi,XX)-diff_fi(TF,fe-df/2.,fi,XX))/df
+
+def diff2_fe_fi(TF, fe, fi,XX, df=1e-5):
+    return (diff_fe(TF, fe, fi+df/2.,XX)-diff_fe(TF,fe, fi-df/2.,XX))/df
+
+def diff2_fi_fi(TF, fe, fi,XX, df=1e-5):
+    return (diff_fi(TF, fe, fi+df/2.,XX)-diff_fi(TF,fe, fi-df/2.,XX))/df
+
+
+# [run_mean_field_2order_secondway function and final execution call omitted
+#  for brevity -- see full source. Called with:
+#  run_mean_field_2order_secondway('RS-cellbis', 'FS-cell', 'CONFIG1',
+#                                  T=30e-3, dt=5e-4, tstop=4)]
+
+================================================================================
+END OF DOCUMENT
+================================================================================

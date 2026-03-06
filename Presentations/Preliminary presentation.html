@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Modeling the Psychedelic Reversal of Anesthesia</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Merriweather:wght@400;500;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    
+    <!-- Plotly.js for Live Graphing -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+
+    <!-- MathJax for high-quality LaTeX rendering -->
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            },
+            svg: { fontCache: 'global' },
+            chtml: { displayAlign: 'left' } 
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <style>
+        /* 1. THE SETUP - Dark Blue Theme for Accessibility */
+        * { box-sizing: border-box; }
+        body {
+            background-color: #002b4d;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 40px;
+            padding: 40px 0;
+            margin: 0;
+            font-family: "DM Sans", sans-serif;
+            color: #f1f5f9;
+        }
+        .slide-container {
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            font-family: "DM Sans", sans-serif;
+            width: 1280px;
+            height: 720px;
+            overflow: hidden;
+            padding: 40px 50px;
+            position: relative;
+            background-color: #005088;
+            border-radius: 8px;
+            border: 1px solid #336699;
+        }
+        
+        /* Typography */
+        h1 { color: #f3f0df; font-family: "Merriweather", serif; font-size: 64px; line-height: 1.1; margin: 0; }
+        .slide-title { 
+            font-family: "Merriweather", serif; 
+            font-size: 40px; 
+            font-weight: 700; 
+            color: #f3f0df; 
+            width: 100%; 
+            border-bottom: 2px solid #f3f0df; 
+            padding-bottom: 10px; 
+            margin-bottom: 20px; 
+        }
+        p, li { font-size: 18px; line-height: 1.4; color: #e2e8f0; }
+        h3 { font-family: "Merriweather", serif; font-size: 24px; color: #a5d8ff; margin-top: 0; margin-bottom: 8px;}
+        strong { color: #fff; font-weight: 700; }
+
+        /* Layouts */
+        .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; width: 100%; flex: 1; overflow: hidden; }
+        
+        /* Math Styling */
+        .math-block { 
+            background: #003d66; 
+            border-radius: 12px; 
+            padding: 12px; 
+            border-left: 6px solid #e11d48; 
+            margin-bottom: 12px;
+            font-size: 16px;
+            color: #fff;
+        }
+        mjx-container { color: white !important; }
+        
+        .highlight { color: #ff99aa; font-weight: 700; }
+        .highlight-blue { color: #99ccff; font-weight: 700; }
+
+        /* Qualitative Explanation Box */
+        .qual-box {
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 8px 10px;
+            margin-top: 8px;
+            font-size: 15px;
+            border-left: 4px solid #a5d8ff;
+        }
+        .qual-item { margin-bottom: 6px; }
+        .qual-term { font-family: "Times New Roman", serif; font-style: italic; color: #a5d8ff; font-weight: bold; }
+        
+        /* Diagrams */
+        .neuron-diagram {
+            position: relative;
+            width: 100%;
+            height: 350px;
+            background: #003d66;
+            border-radius: 12px;
+            border: 1px solid #336699;
+        }
+        .membrane {
+            position: absolute;
+            top: 50%;
+            left: 10%;
+            width: 80%;
+            height: 20px;
+            background: #cbd5e1;
+            border-radius: 10px;
+            transform: translateY(-50%);
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .receptor {
+            position: absolute;
+            top: 50%;
+            width: 80px;
+            height: 60px;
+            border-radius: 8px;
+            transform: translateY(-50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            z-index: 2;
+        }
+        .gaba { background: #1e3a8a; left: 25%; border: 2px solid #60a5fa; }
+        .ht2a { background: #9f1239; left: 65%; border: 2px solid #fda4af; }
+        .channel-label {
+            position: absolute;
+            top: 65%;
+            font-size: 16px;
+            font-weight: bold;
+            color: #cbd5e1;
+        }
+        .action-arrow {
+            position: absolute;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        /* Plotly Container */
+        #transfer-function-plot {
+            width: 100%;
+            height: 100%;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+    </style>
+</head>
+<body>
+
+<!-- Slide 1: Title Slide -->
+<div class="slide-container" style="justify-content: center; align-items: center; text-align: center;">
+    <h1>Modeling the Psychedelic Reversal of Anesthesia</h1>
+    <p style="color: #a5d8ff; font-size: 32px; margin-top: 30px; font-weight: 500;">An introduction to the project and the AdEx and Mean Field Models</p>
+    <div style="margin-top: 60px; color: rgba(255,255,255,0.7); font-size: 18px;">Lab Group Presentation</div>
+</div>
+
+<!-- Slide 2: Experimental Findings -->
+<div class="slide-container">
+    <h2 class="slide-title">Experimental Findings</h2>
+    <div class="two-column">
+        <div style="font-size: 19px; display: flex; flex-direction: column; justify-content: center;">
+            <ul style="line-height: 1.8;">
+                <li><strong>DOI</strong> (psychedelic) actively reverses anesthesia induced by both <strong>Propofol</strong> and <strong>Isoflurane</strong>.
+                    <ul style="color: #a5d8ff; margin-top: 10px; font-size: 18px;">
+                        <li>Note: Isoflurane has a broad mechanism of action, affecting GABA<sub>A</sub>, Glycine, and K<sup>+</sup> channels.</li>
+                    </ul>
+                </li>
+                
+                <li style="margin-top: 25px;"><strong>Lisuride</strong> (non-psychedelic) <strong>FAILS</strong> to reverse anesthesia, despite being a high-affinity agonist at 5-HT<sub>2A</sub>.</li>
+                
+                <li style="margin-top: 25px;"><strong>Conclusion:</strong> Modeling the recovery of wakefulness based solely on 5-HT<sub>2A</sub> affinity is insufficient. The model must account for more specific functional selectivity that distinguishes psychedelic from non-psychedelic pathways.</li>
+            </ul>
+        </div>
+        <div class="neuron-diagram">
+            <div style="position: absolute; top: 10px; width: 100%; text-align: center; font-weight: bold; color: #e2e8f0;">Post-Synaptic Membrane Targets</div>
+            
+            <!-- Membrane -->
+            <div class="membrane"></div>
+            
+            <!-- GABA Receptor -->
+            <div class="receptor gaba">GABA<sub>A</sub></div>
+            <div class="channel-label" style="left: 23%;">Cl<sup>-</sup> Influx</div>
+            <div class="action-arrow" style="top: 25%; left: 30%; color: #60a5fa;">&darr; Propofol</div>
+            <div style="position: absolute; top: 75%; left: 20%; width: 180px; font-size: 14px; text-align: center; color: #cbd5e1;">Increases Inhibition<br>(Hyperpolarization)</div>
+
+            <!-- 5-HT2A Receptor -->
+            <div class="receptor ht2a">5-HT<sub>2A</sub></div>
+            <div class="channel-label" style="left: 63%;">Close K<sup>+</sup> Leak</div>
+            <div class="action-arrow" style="top: 25%; left: 70%; color: #fda4af;">&darr; DOI</div>
+            <div style="position: absolute; top: 75%; left: 60%; width: 180px; font-size: 14px; text-align: center; color: #cbd5e1;">Increases Excitability<br>(Depolarization)</div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 2.5: Hypothesis -->
+<div class="slide-container">
+    <h2 class="slide-title">Hypothesis: Functional Selectivity</h2>
+    <div class="two-column">
+        <!-- Left: Molecular Mechanism -->
+        <div>
+            <h3>The Molecular Difference</h3>
+            <p>Why is DOI psychedelic while Lisuride is not, even though both bind 5-HT<sub>2A</sub>?</p>
+            
+            <div class="qual-box" style="margin-top: 20px;">
+                <p style="margin-bottom: 10px;"><strong style="color: #fda4af;">Biased Agonism (Functional Selectivity)</strong></p>
+                
+                <div style="margin-bottom: 15px; border-left: 3px solid #fda4af; padding-left: 10px;">
+                    <div style="font-weight: bold; color: #fff;">1. DOI (Psychedelic)</div>
+                    <div style="font-size: 16px; color: #cbd5e1;">Recruits <strong>G<sub>q/11</sub></strong> protein pathway.</div>
+                    <div style="font-size: 14px; color: #94a3b8; font-style: italic;">&rarr; Phospholipase C &rarr; Closing of K<sup>+</sup> channels.</div>
+                </div>
+
+                <div style="border-left: 3px solid #94a3b8; padding-left: 10px;">
+                    <div style="font-weight: bold; color: #fff;">2. Lisuride (Non-Hallucinogenic)</div>
+                    <div style="font-size: 16px; color: #cbd5e1;">Prefers <strong>&beta;-Arrestin</strong> recruitment.</div>
+                    <div style="font-size: 14px; color: #94a3b8; font-style: italic;">&rarr; Despite binding, it fails to close K<sup>+</sup> channels (<strong>"The Agonist Paradox"</strong>).</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: AdEx Speculation -->
+        <div>
+            <h3>Implication for AdEx Parameters</h3>
+            <p>If the key physiological difference is <strong>K<sup>+</sup> channel closure</strong>, this maps directly to membrane resistance.</p>
+
+            <div style="background: #003d66; border-radius: 12px; padding: 20px; border: 1px solid #336699; margin-top: 20px;">
+                <table style="width: 100%; border-collapse: collapse; color: #e2e8f0;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid #336699;">
+                            <th style="text-align: left; padding: 10px;">Drug</th>
+                            <th style="text-align: left; padding: 10px;">Mechanism</th>
+                            <th style="text-align: left; padding: 10px;">AdEx Param ($g_L$)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style="border-bottom: 1px solid #336699;">
+                            <td style="padding: 12px; font-weight: bold; color: #fda4af;">DOI</td>
+                            <td>Closes K<sup>+</sup> Leak</td>
+                            <td><strong style="color: #fda4af;">&darr; Decrease</strong><br><span style="font-size: 12px;">(Higher Excitability)</span></td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #336699;">
+                            <td style="padding: 12px; font-weight: bold; color: #cbd5e1;">Lisuride</td>
+                            <td><strong>Uncoupled</strong> from K<sup>+</sup></td>
+                            <td><strong style="color: #cbd5e1;">&approx; Baseline</strong><br><span style="font-size: 12px;">(No Signaling Efficacy)</span></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 12px; font-weight: bold; color: #93c5fd;">Propofol</td>
+                            <td>(Affects GABA)</td>
+                            <td><strong style="color: #93c5fd;">No Change *</strong><br><span style="font-size: 12px;">(Affects $\tau_{syn}$ instead)</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="margin-top: 20px; background: rgba(255, 255, 100, 0.1); padding: 10px; border-radius: 6px; border-left: 4px solid #facc15;">
+                <strong>Simulation Hypothesis:</strong><br>
+                To model Lisuride, we will execute the simulation with high 5-HT<sub>2A</sub> occupancy but <strong>keep $g_L$ at baseline</strong>.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 3: Micro Scale (AdEx) -->
+<div class="slide-container">
+    <h2 class="slide-title">Micro Scale: AdEx Neuron Model</h2>
+    <div class="two-column" style="gap: 10px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <!-- Membrane Potential Dynamics -->
+            <div>
+                <p style="margin-bottom: 2px; font-size: 15px;"><strong>1. Voltage Dynamics ($V$)</strong></p>
+                <div class="math-block" style="font-size: 13px; padding: 4px;">
+                    $$C_m \frac{dv}{dt} = -g_L(v-E_L) + g_L \Delta_T e^{\frac{v-v_T}{\Delta_T}} - w + I_{syn}$$
+                </div>
+                <div class="qual-box" style="font-size: 11px; padding: 4px 6px; margin-top: 2px;">
+                    <div class="qual-item" style="margin-bottom: 2px;">
+                        <span class="qual-term">$g_L (30\text{nS})$:</span> <strong>Leak.</strong> Pulls $V$ to $E_L (-70.6\text{mV})$.
+                    </div>
+                    <div class="qual-item" style="margin-bottom: 2px;">
+                        <span class="qual-term">$\Delta_T (2\text{mV})$:</span> <strong>Slope Factor.</strong> Once $V > V_T$, exponential growth leads to <strong>Spike!</strong>
+                    </div>
+                    <div class="qual-item" style="margin-bottom: 2px;">
+                        <span class="qual-term">$-w$:</span> <strong>Adaptation.</strong> Negative feedback current.
+                    </div>
+                </div>
+                <div style="font-size: 11px; background: #334155; padding: 3px 6px; border-radius: 4px; border-left: 3px solid #ef4444; margin-top: 3px;">
+                    <strong>Reset:</strong> When $v > V_{peak}$, $v \leftarrow V_{reset}$ instantly.
+                </div>
+            </div>
+            
+            <!-- Adaptation Dynamics -->
+            <div>
+                <p style="margin-bottom: 2px; font-size: 15px;"><strong>2. Adaptation Dynamics ($w$)</strong></p>
+                <div class="math-block" style="font-size: 13px; padding: 4px; border-left-color: #fbbf24;">
+                    $$\tau_w \frac{dw}{dt} = a(v-E_L) - w + b \sum \delta(t-t_{k})$$
+                </div>
+                  <div class="qual-box" style="font-size: 11px; padding: 4px 6px; margin-top: 2px;">
+                     <div class="qual-item" style="margin-bottom: 2px;">
+                        <span class="qual-term">$a$ (4nS):</span> <strong>Gain (Level Setting).</strong> constant drag ($g_L+a$) that lowers overall firing rate.
+                     </div>
+                     <div class="qual-item" style="margin-bottom: 2px;">
+                        <span class="qual-term">$b$ (80pA):</span> <strong>Fatigue (Adaptation).</strong> spike-triggered jump ($w \leftarrow w+b$) causes progressive slowing.
+                     </div>
+                     <div class="qual-item" style="margin-bottom: 0px;">
+                        <span class="qual-term">$\tau_w$ (144ms):</span> <strong>Recovery.</strong> Timescale for fatigue to fade.
+                     </div>
+                 </div>
+                 
+            </div>
+
+            <!-- Drug Modulation -->
+            <div>
+                <p style="margin-bottom: 2px; font-size: 15px;"><strong>3. Pharmacological Modulation</strong></p>
+                <div class="qual-box" style="font-size: 11px; padding: 4px 6px; margin-top: 2px; border-left: 3px solid #60a5fa; background: #334155;">
+                    <div class="qual-item" style="margin-bottom: 2px;">
+                       <span class="qual-term" style="color: #fda4af;">DOI (Psychedelic):</span> <strong>$\downarrow g_L$.</strong> Higher resistance ($1/g_L$) &rarr; Increased Excitability.
+                    </div>
+                    <div class="qual-item" style="margin-bottom: 0px;">
+                       <span class="qual-term" style="color: #93c5fd;">Propofol (Anesthetic):</span> <strong>$\uparrow \tau_{syn}$ (in $I_{syn}$).</strong> Slower GABA decay &rarr; Prolonged Inhibition.
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
+            <!-- Inserted AdEx Simulation Plot -->
+            <div style="background: white; padding: 10px; border-radius: 8px; flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                <img src="adex_plot.png" alt="AdEx Neuron Simulation" style="width: auto; height: 100%; object-fit: contain; border-radius: 4px;">
+            </div>
+        </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 4: Bridging Scales -->
+<div class="slide-container">
+    <h2 class="slide-title">Micro to Meso: The Transfer Function</h2>
+    <div class="two-column">
+        <div>
+            <h3>1. The Stochastic Input</h3>
+            <p style="margin-bottom: 5px;">We do not use a static current. We inject <strong>Poisson Spike Trains</strong>.</p>
+            <div class="qual-box" style="font-size: 13px; padding: 6px;">
+                <div class="qual-item"><strong>Poisson Process:</strong> Spike times are random, but average rate is fixed ($\nu_E, \nu_I$). Mimics "synaptic noise".</div>
+            </div>
+            
+            <h3 style="margin-top: 15px;">2. The Output Map</h3>
+            <p style="margin-bottom: 5px;">We measure <strong>Stationary Output Rate</strong> $\nu_{out}$ for every pair $(\nu_E, \nu_I)$.</p>
+
+            <h3 style="margin-top: 15px;">3. The Analytical Fit</h3>
+            <div class="math-block" style="font-size: 14px; padding: 8px; margin-bottom: 8px;">
+                $$F = \frac{1}{2\tau_V} \cdot \text{erfc}\left( \frac{V_{thr}^{eff} - \mu_V}{\sqrt{2}\sigma_V} \right)$$
+                $$\mu_V(\dots, w) = \mu_{syn} + E_L - \frac{w}{g_L}$$
+            </div>
+            <div class="qual-box" style="font-size: 13px; padding: 6px;">
+                <div class="qual-item"><span class="qual-term">erfc:</span> <strong>Complementary Error Function.</strong> Prob. that noise ($\sigma_V$) crosses threshold.</div>
+            </div>
+        </div>
+        <div>
+            <!-- Plotly Graph Container -->
+            <!-- Combined Heatmap -->
+            <div style="width: 100%; height: 100%; background: white; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                <img src="transfer_functions_combined.png" alt="Excitatory and Inhibitory Transfer Functions" style="width: 100%; height: auto; object-fit: contain;">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 5: Meso Scale (Mean Field) -->
+<div class="slide-container">
+    <h2 class="slide-title">Meso Scale: The Mean-Field System</h2>
+    <div class="two-column">
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+            <div>
+                <div class="math-block" style="font-size: 18px;">
+                    $$T \frac{d\nu_E}{dt} = F_E(\nu_E, \nu_I, W) - \nu_E$$
+                    $$T \frac{d\nu_I}{dt} = F_I(\nu_E, \nu_I, W) - \nu_I$$
+                </div>
+                <div class="qual-box" style="margin-bottom: 20px;">
+                    <div class="qual-item"><span class="qual-term">d/dt:</span> Rate of change of population firing.</div>
+                    <div class="qual-item"><span class="qual-term">F(...):</span> <strong>Target Rate.</strong> Driven by inputs ($v_E, v_I$) and noise.</div>
+                </div>
+            </div>
+            <div>
+                <div class="math-block" style="font-size: 18px; border-left-color: #fbbf24;">
+                    $$\frac{dW}{dt} = -\frac{W}{\tau_w} + b\nu_E + \frac{a}{\tau_w}(\mu_V - E_L)$$
+                </div>
+                <div class="qual-box" style="margin-bottom: 20px;">
+                    <div class="qual-item"><span class="qual-term">a(v-E_L):</span> <strong>Sub-threshold Coupling.</strong> Voltage influences adaptation even without spiking. Larger $a$ dampens resonance.</div>
+                    <div class="qual-item"><span class="qual-term">-W/tau:</span> <strong>Recovery.</strong> Adaptation fades away.</div>
+                    <div class="qual-item"><span class="qual-term">+b*v_E:</span> <strong>Accumulation.</strong> Fatigue builds up with firing.</div>
+                </div>
+            </div>
+        </div>
+        <div style="display: flex; flex-direction: column; justify-content: center; height: 100%; overflow: hidden;">
+             <!-- Mean Field Simulation Plot -->
+             <div style="background: white; padding: 10px; border-radius: 8px; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3); min-height: 0;">
+                <div style="flex: 1; width: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                    <img src="mean_field_crop_user.png" alt="Mean Field Dynamics (Paper Reference)" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; border-radius: 4px;">
+                </div>
+                <p style="color: #333; font-size: 14px; margin-top: 10px; font-weight: bold; text-align: center; flex-shrink: 0;">Reference Dynamics (Zerlaut et al.):<br><strong>Condition c: Propofol (GABA-ergic)</strong></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Slide 6: The Reversal Mechanism -->
+<div class="slide-container">
+    <h2 class="slide-title">Dynamics: The "Tug-of-War"</h2>
+    <div class="two-column">
+        <div style="padding-top: 10px;">
+            <h3>Competing Shifts in $F$</h3>
+            <div class="qual-box" style="background: none; border: none; padding: 0;">
+                <p>The brain state is determined by where the <strong>Transfer Function</strong> curve intersects the <strong>Identity Line</strong> (Input = Output). These intersections are the "Fixed Points".</p>
+            </div>
+            <ul>
+                <li><span class="highlight-blue">Anesthesia Action:</span> Increases $\tau_{syn}^I$.
+                    <br>This <strong>flattens</strong> the curve (drags it down).
+                    <br>&rarr; The high-activity fixed point disappears. System falls to coma (low rate).
+                </li>
+                <li style="margin-top: 15px;"><span class="highlight">Psychedelic Action:</span> Decreases $g_L$ (leak).
+                    <br>This <strong>boosts</strong> the curve (pulls it up).
+                    <br>&rarr; The high-activity fixed point (<strong>Red Dot</strong>) is restored.
+                </li>
+            </ul>
+        </div>
+        <div style="background: white; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+             <!-- SVG Graph Reprise -->
+             <div style="width: 100%; height: 100%; max-height: 400px; display: flex; align-items: center; justify-content: center;">
+                 <img src="tug_of_war_plot.png" alt="Tug-of-War Dynamics" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+             </div>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript to Generate Heatmap -->
+
+
+</body>
+</html>

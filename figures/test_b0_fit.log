@@ -1,0 +1,95 @@
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+
+Running 8 jobs (4 conditions x 2 seeds) across 8 cores [ALL-LZC]...
+
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-03-01 18:25:41,519 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-03-01 18:25:41,519 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-03-01 18:25:41,521 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-03-01 18:25:41,521 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-03-01 18:25:41,521 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-03-01 18:25:41,521 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-03-01 18:25:41,521 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-03-01 18:25:41,521 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-03-01 18:25:41,523 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-03-01 18:25:41,523 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-03-01 18:25:41,542 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-03-01 18:25:41,542 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-03-01 18:25:41,547 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-03-01 18:25:41,547 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-03-01 18:25:41,547 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-03-01 18:25:41,547 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    Awake seed=0: mean FR = 8.49 Hz
+    done: Awake seed=0  LZc=0.91421
+    DOI only seed=1: mean FR = 9.71 Hz
+    Propofol+DOI seed=1: mean FR = 1.34 Hz
+    done: DOI only seed=1  LZc=0.92371
+    done: Propofol+DOI seed=1  LZc=0.48434
+    Propofol+DOI seed=0: mean FR = 1.71 Hz
+    Awake seed=1: mean FR = 8.51 Hz
+    Propofol seed=0: mean FR = 0.63 Hz
+    done: Propofol+DOI seed=0  LZc=0.53060
+    Propofol seed=1: mean FR = 0.49 Hz
+    DOI only seed=0: mean FR = 9.71 Hz
+    done: Awake seed=1  LZc=0.90798
+    done: Propofol seed=0  LZc=0.70973
+    done: Propofol seed=1  LZc=0.80939
+    done: DOI only seed=0  LZc=0.92794
+
+======================================================================
+SUMMARY  (n=2 seeds) 
+======================================================================
+Condition                      LZc
+-----------------------------------
+Awake                      0.91109
+Propofol                   0.75956
+Propofol+DOI               0.50747
+DOI only                   0.92582
+
+Total wall time: 2.4 min
+Raw results saved -> /Users/soichi/Desktop/Research/Psychedelics & Anesthesia Modeling Study/figures/complexity_results.npz
+
+Figure saved -> /Users/soichi/Desktop/Research/Psychedelics & Anesthesia Modeling Study/figures/complexity_LZC.png

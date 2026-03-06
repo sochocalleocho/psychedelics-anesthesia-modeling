@@ -1,0 +1,189 @@
+{
+  "_description": "Central cache of ALL LZc simulation results. Check here before running any simulation.",
+  "_updated": "2026-03-05T01:30",
+
+  "CONFIG1_EL-64_N16": {
+    "polynomial": "P_E_SACHA + P_I_SACHA (CONFIG1)",
+    "E_L_e_base": -64.0,
+    "n_seeds": 16,
+    "source": "figures/n16_config1_run.log",
+    "mean_lzc": {
+      "Awake": 0.94445,
+      "Propofol": 0.58588,
+      "Propofol+DOI": 0.75657,
+      "DOI only": 0.94465
+    },
+    "std_lzc": {
+      "Awake": 0.00216,
+      "Propofol": 0.03504,
+      "Propofol+DOI": 0.06110,
+      "DOI only": 0.00217
+    },
+    "per_seed_lzc": {
+      "Awake": [0.94470, 0.94612, 0.94411, 0.94465, 0.94857, 0.94390, 0.94467, 0.94074, 0.94712, 0.94178, 0.94306, 0.94219, 0.94354, 0.94329, 0.94491, 0.94792],
+      "Propofol": [0.53224, 0.52896, 0.60140, 0.55554, 0.58799, 0.56498, 0.58656, 0.58909, 0.64474, 0.62930, 0.60310, 0.56672, 0.58964, 0.62064, 0.54506, 0.62812],
+      "Propofol+DOI": [0.73039, 0.81702, 0.72598, 0.86718, 0.69145, 0.75348, 0.78739, 0.85757, 0.71741, 0.72176, 0.83346, 0.72360, 0.69310, 0.74059, 0.66436, 0.78034],
+      "DOI only": [0.94150, 0.94561, 0.94639, 0.94137, 0.94672, 0.94409, 0.94753, 0.94319, 0.94628, 0.94484, 0.94126, 0.94637, 0.94261, 0.94436, 0.94454, 0.94777]
+    },
+    "statistics": {
+      "DOI_vs_Awake": {"delta": 0.0002, "p_value": 0.731, "significant": false},
+      "Propofol_vs_Awake": {"delta": -0.359, "p_value": 1e-15, "significant": true},
+      "PropDOI_vs_Propofol": {"delta": 0.171, "p_value": 1e-8, "significant": true}
+    },
+    "notes": "DOI>Awake NOT statistically significant. Propofol collapse and DOI reversal both highly significant."
+  },
+
+  "single_seed_results": {
+    "_description": "N=1 (seed=0) quick tests. Useful for screening, not for statistical inference.",
+
+    "CONFIG1_EL-64": {
+      "polynomial": "P_E_SACHA + P_I_SACHA",
+      "E_L_e_base": -64.0,
+      "lzc": {"Awake": 0.94470, "Propofol": 0.53224, "Propofol+DOI": 0.73039, "DOI only": 0.94150},
+      "fr_hz": {"Awake": 6.58, "Propofol": 1.68, "Propofol+DOI": 2.70, "DOI only": 6.98},
+      "propofol_collapse": true,
+      "doi_minus_awake": -0.0032,
+      "source": "figures/n16_config1_run.log (seed=0)"
+    },
+
+    "GLOBAL_OPT_EL-64": {
+      "polynomial": "P_E_GLOBAL (MSE=20.4, P[2]=+0.004)",
+      "E_L_e_base": -64.0,
+      "lzc": {"Awake": 0.94690, "Propofol": 0.94015, "Propofol+DOI": 0.54824, "DOI only": 0.94707},
+      "propofol_collapse": false,
+      "notes": "FAILS — propofol shows no collapse, Prop+DOI inverted ordering"
+    },
+
+    "WEIGHTED_OPT_EL-64": {
+      "polynomial": "P_E_WEIGHTED (P[2]=+0.009)",
+      "E_L_e_base": -64.0,
+      "lzc": {"Awake": 0.91218, "Propofol": 0.95116, "Propofol+DOI": 0.95403, "DOI only": 0.91218},
+      "propofol_collapse": false,
+      "notes": "FAILS — completely flat, no differentiation"
+    },
+
+    "P2_MINUS_0.001_EL-64": {
+      "polynomial": "DE constrained P[2]=-0.001",
+      "E_L_e_base": -64.0,
+      "lzc": {"Awake": 0.94273, "Propofol": 0.94052, "Propofol+DOI": 0.88567, "DOI only": 0.94624},
+      "propofol_collapse": false
+    },
+
+    "P2_MINUS_0.015_EL-64": {
+      "polynomial": "BH constrained P[2]=-0.015",
+      "E_L_e_base": -64.0,
+      "lzc": {"Awake": 0.93476, "Propofol": 0.80166, "Propofol+DOI": 0.78419, "DOI only": 0.94973},
+      "propofol_collapse": false,
+      "notes": "Partial suppression only, P+DOI < Propofol (wrong ordering)"
+    },
+
+    "DiVolo_PE_SachaPI_EL-64": {
+      "polynomial": "P_E_DIVOLO + P_I_SACHA (DV_PE+C1_PI)",
+      "E_L_e_base": -64.0,
+      "lzc": {"Awake": 0.93617, "Propofol": 0.92089, "Propofol+DOI": 0.92760, "DOI only": 0.94165},
+      "fr_hz": {"Awake": 5.14, "Propofol": 1.41, "Propofol+DOI": 2.02, "DOI only": 6.12},
+      "propofol_collapse": false,
+      "doi_minus_awake": 0.00548,
+      "full_ordering": true,
+      "notes": "Correct ordering P<P+D<A<D but no propofol collapse. Best DOI-Awake with C1_PI."
+    },
+
+    "DiVolo_full_EL-64": {
+      "polynomial": "P_E_DIVOLO + P_I_DIVOLO (DiVolo full pair)",
+      "E_L_e_base": -64.0,
+      "lzc": {"Awake": 0.93585, "Propofol": 0.93632, "Propofol+DOI": 0.94034, "DOI only": 0.94392},
+      "fr_hz": {"Awake": 4.43, "Propofol": 1.83, "Propofol+DOI": 2.19, "DOI only": 5.88},
+      "propofol_collapse": false,
+      "doi_minus_awake": 0.00807,
+      "notes": "BEST DOI>Awake ever seen (+0.008). No propofol collapse. Correct DOI ordering."
+    },
+
+    "DiVolo_full_EL-63": {
+      "polynomial": "P_E_DIVOLO + P_I_DIVOLO (DiVolo full pair)",
+      "E_L_e_base": -63.0,
+      "lzc": {"Awake": 0.94377, "Propofol": 0.93566, "Propofol+DOI": 0.94024, "DOI only": 0.94498},
+      "fr_hz": {"Awake": 5.10, "Propofol": 2.17, "Propofol+DOI": 2.36, "DOI only": 5.86},
+      "propofol_collapse": false,
+      "doi_minus_awake": 0.00121,
+      "notes": "At Martin's stated EL=-63, DiVolo gives same DOI-Awake as CONFIG1 (+0.001 vs +0.001)."
+    },
+
+    "DiVolo_full_EL-65": {
+      "polynomial": "P_E_DIVOLO + P_I_DIVOLO (DiVolo full pair)",
+      "E_L_e_base": -65.0,
+      "lzc": {"Awake": 0.92716, "Propofol": 0.92482, "Propofol+DOI": 0.93516, "DOI only": 0.94720},
+      "fr_hz": {"Awake": 3.59, "Propofol": 1.47, "Propofol+DOI": 2.01, "DOI only": 8.88},
+      "propofol_collapse": false,
+      "doi_minus_awake": 0.02003,
+      "full_ordering": true,
+      "notes": "MARTIN'S ACTUAL CONFIG! DOI-Awake=+0.020 (best ever). No propofol collapse but huge DOI effect. Awake LZc lower (0.927 vs 0.945 for CONFIG1)."
+    },
+
+    "SachaPE_DiVoloPI_EL-64": {
+      "polynomial": "P_E_SACHA + P_I_DIVOLO (C1_PE+DV_PI)",
+      "E_L_e_base": -64.0,
+      "lzc": {"Awake": 0.94796, "Propofol": 0.94938, "Propofol+DOI": 0.95244, "DOI only": 0.95093},
+      "fr_hz": {"Awake": 6.39, "Propofol": 2.26, "Propofol+DOI": 2.64, "DOI only": 7.08},
+      "propofol_collapse": false,
+      "notes": "Everything ~0.95, no differentiation. Di Volo P_I removes propofol collapse from CONFIG1 P_E."
+    },
+
+    "interpolation_sweep_EL-64": {
+      "_description": "P_hybrid = α×CONFIG1 + (1-α)×DiVolo, Zerlaut_gK_gNa model, DK68, seed=0",
+      "source": "code/analysis/tvb_interpolation_sweep.py, job 44351075",
+      "notes": "NO sweet spot exists. Propofol collapse and DOI>Awake are mutually exclusive in interpolation. Sharp propofol transition at α=0.8-1.0. DOI>Awake sign flip at α≈0.6.",
+      "results": {
+        "alpha_0.0": {"P2": -0.0235, "lzc": {"Awake": 0.93585, "Propofol": 0.93632, "Propofol+DOI": 0.94034, "DOI only": 0.94392}, "fr": {"Awake": 4.43, "Propofol": 1.83, "Propofol+DOI": 2.19, "DOI only": 5.88}, "doi_minus_awake": 0.00807},
+        "alpha_0.1": {"P2": -0.0219, "lzc": {"Awake": 0.93610, "Propofol": 0.93568, "Propofol+DOI": 0.94170, "DOI only": 0.94396}, "doi_minus_awake": 0.00786},
+        "alpha_0.2": {"P2": -0.0204, "lzc": {"Awake": 0.93808, "Propofol": 0.93620, "Propofol+DOI": 0.94157, "DOI only": 0.94515}, "doi_minus_awake": 0.00707},
+        "alpha_0.3": {"P2": -0.0188, "lzc": {"Awake": 0.94302, "Propofol": 0.93470, "Propofol+DOI": 0.94380, "DOI only": 0.94672}, "doi_minus_awake": 0.00370},
+        "alpha_0.4": {"P2": -0.0173, "lzc": {"Awake": 0.94157, "Propofol": 0.93729, "Propofol+DOI": 0.94410, "DOI only": 0.94622}, "doi_minus_awake": 0.00465},
+        "alpha_0.5": {"P2": -0.0157, "lzc": {"Awake": 0.94372, "Propofol": 0.93994, "Propofol+DOI": 0.94505, "DOI only": 0.94479}, "doi_minus_awake": 0.00107},
+        "alpha_0.6": {"P2": -0.0142, "lzc": {"Awake": 0.94291, "Propofol": 0.93864, "Propofol+DOI": 0.94425, "DOI only": 0.94374}, "doi_minus_awake": 0.00083},
+        "alpha_0.7": {"P2": -0.0126, "lzc": {"Awake": 0.94499, "Propofol": 0.93723, "Propofol+DOI": 0.94388, "DOI only": 0.94186}, "doi_minus_awake": -0.00313},
+        "alpha_0.8": {"P2": -0.0110, "lzc": {"Awake": 0.94381, "Propofol": 0.83349, "Propofol+DOI": 0.93622, "DOI only": 0.94135}, "doi_minus_awake": -0.00246},
+        "alpha_0.9": {"P2": -0.0095, "lzc": {"Awake": 0.94281, "Propofol": 0.78982, "Propofol+DOI": 0.92833, "DOI only": 0.94218}, "doi_minus_awake": -0.00063},
+        "alpha_1.0": {"P2": -0.0079, "lzc": {"Awake": 0.94470, "Propofol": 0.53224, "Propofol+DOI": 0.73039, "DOI only": 0.94150}, "fr": {"Awake": 6.58, "Propofol": 1.68, "Propofol+DOI": 2.70, "DOI only": 6.98}, "doi_minus_awake": -0.00320, "propofol_collapse": true}
+      }
+    },
+
+    "CONFIG1_EL_sweep": {
+      "_description": "CONFIG1 polynomial at various E_L_e baselines (all single seed=0)",
+      "E_L-65.0": {
+        "lzc": {"Awake": 0.94443, "Propofol": 0.50831, "Propofol+DOI": 0.77352, "DOI only": 0.94058},
+        "fr_hz": {"Awake": 6.14, "Propofol": 1.35, "Propofol+DOI": 2.56, "DOI only": 6.81},
+        "propofol_collapse": true, "doi_minus_awake": -0.00385
+      },
+      "E_L-64.5": {
+        "lzc": {"Awake": 0.94192, "Propofol": 0.69644, "Propofol+DOI": 0.73115, "DOI only": 0.94099},
+        "fr_hz": {"Awake": 6.36, "Propofol": 1.83, "Propofol+DOI": 2.72, "DOI only": 6.90},
+        "propofol_collapse": false, "doi_minus_awake": -0.00093
+      },
+      "E_L-64.0": {
+        "lzc": {"Awake": 0.94470, "Propofol": 0.53224, "Propofol+DOI": 0.73039, "DOI only": 0.94150},
+        "fr_hz": {"Awake": 6.58, "Propofol": 1.68, "Propofol+DOI": 2.70, "DOI only": 6.98},
+        "propofol_collapse": true, "doi_minus_awake": -0.00321
+      },
+      "E_L-63.5": {
+        "lzc": {"Awake": 0.94345, "Propofol": 0.74731, "Propofol+DOI": 0.90167, "DOI only": 0.94386},
+        "fr_hz": {"Awake": 6.78, "Propofol": 2.56, "Propofol+DOI": 3.11, "DOI only": 7.06},
+        "propofol_collapse": false, "doi_minus_awake": 0.00042, "full_ordering": true
+      },
+      "E_L-63.0": {
+        "lzc": {"Awake": 0.94287, "Propofol": 0.90930, "Propofol+DOI": 0.93930, "DOI only": 0.94430},
+        "fr_hz": {"Awake": 6.97, "Propofol": 2.91, "Propofol+DOI": 3.24, "DOI only": 7.14},
+        "propofol_collapse": false, "doi_minus_awake": 0.00143, "full_ordering": true
+      },
+      "E_L-62.5": {
+        "lzc": {"Awake": 0.94523, "Propofol": 0.94310, "Propofol+DOI": 0.94248, "DOI only": 0.94546},
+        "fr_hz": {"Awake": 7.16, "Propofol": 3.27, "Propofol+DOI": 3.43, "DOI only": 7.22},
+        "propofol_collapse": false, "doi_minus_awake": 0.00023
+      },
+      "E_L-62.0": {
+        "lzc": {"Awake": 0.94709, "Propofol": 0.94479, "Propofol+DOI": 0.94825, "DOI only": 0.94562},
+        "fr_hz": {"Awake": 7.34, "Propofol": 3.58, "Propofol+DOI": 3.61, "DOI only": 7.30},
+        "propofol_collapse": false, "doi_minus_awake": -0.00146
+      }
+    }
+  }
+}

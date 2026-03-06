@@ -1,0 +1,228 @@
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+
+Running 20 jobs (4 conditions x 5 seeds) across 10 cores ...
+
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-02-28 13:02:23,689 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:02:23,689 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-02-28 13:02:23,692 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:02:23,692 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-02-28 13:02:23,692 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:02:23,692 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-02-28 13:02:23,694 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:02:23,694 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-02-28 13:02:23,703 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:02:23,703 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-02-28 13:02:23,707 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:02:23,707 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-02-28 13:02:23,710 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:02:23,710 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-02-28 13:02:23,716 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:02:23,716 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-02-28 13:02:23,716 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:02:23,717 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+5-HT2A density map: 68 regions (DK68), max=1.455, mean=0.395
+  g_K_e range (DOI): 7.1706 - 8.1429 nS  (baseline 8.1429)
+  g_K_i range (DOI): 7.9799 - 8.2143 nS  (baseline 8.2143)
+  Effective E_L_e range: -64.00 - -61.20 mV  (baseline -64.0)
+  Effective E_L_i range: -65.00 - -64.40 mV  (baseline -65.0)
+2026-02-28 13:02:23,727 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:02:23,727 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    Awake seed=4: mean FR = 156.85 Hz
+2026-02-28 13:05:01,245 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:05:01,247 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    Awake seed=3: mean FR = 156.83 Hz
+    Awake seed=2: mean FR = 156.96 Hz
+2026-02-28 13:05:03,136 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:05:03,137 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:05:03,403 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:05:03,403 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    Awake seed=1: mean FR = 157.09 Hz
+    Propofol seed=2: mean FR = 2.67 Hz
+    Awake seed=0: mean FR = 156.98 Hz
+2026-02-28 13:05:05,388 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:05:05,389 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    Propofol seed=0: mean FR = 2.68 Hz
+2026-02-28 13:05:05,895 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:05:05,896 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:05:05,981 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:05:05,982 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:05:06,242 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:05:06,243 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    Propofol seed=1: mean FR = 2.64 Hz
+    Propofol seed=4: mean FR = 2.66 Hz
+2026-02-28 13:05:07,259 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:05:07,260 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    Propofol seed=3: mean FR = 2.67 Hz
+2026-02-28 13:05:08,110 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:05:08,110 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:05:08,560 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:05:08,560 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:07:40,009 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:07:40,011 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:07:42,922 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:07:42,922 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:07:44,939 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:07:44,940 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:07:45,068 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:07:45,069 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:07:46,023 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:07:46,024 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:07:46,889 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:07:46,889 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:07:48,547 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:07:48,547 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:07:48,921 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:07:48,922 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:07:49,182 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:07:49,183 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:07:49,978 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:07:49,978 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:10:11,985 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:10:11,988 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:10:17,695 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:10:17,696 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:10:18,963 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:10:18,964 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:10:19,938 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:10:19,939 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:10:21,454 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:10:21,454 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:10:22,020 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:10:22,020 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:10:24,070 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:10:24,071 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:10:25,325 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:10:25,326 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:10:25,761 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:10:25,761 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:10:26,099 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:10:26,099 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:12:45,121 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:12:45,121 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:12:51,404 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:12:51,405 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:12:53,492 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:12:53,492 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:12:54,431 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:12:54,432 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:12:55,845 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:12:55,845 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:12:58,072 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:12:58,072 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:13:00,477 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:13:00,478 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:13:00,886 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:13:00,887 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:13:01,647 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:13:01,648 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:13:02,421 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:13:02,421 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    done: Awake seed=4  LZc=0.45800  PCI=0.1295
+2026-02-28 13:15:30,341 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:15:30,341 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    done: Awake seed=3  LZc=0.46180  PCI=0.1443
+2026-02-28 13:15:41,396 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:15:41,397 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    done: Awake seed=1  LZc=0.47463  PCI=0.1399
+2026-02-28 13:15:44,278 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:15:44,279 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    done: Awake seed=2  LZc=0.46393  PCI=0.1388
+2026-02-28 13:15:44,593 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:15:44,594 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    done: Awake seed=0  LZc=0.49274  PCI=0.1416
+2026-02-28 13:15:46,312 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:15:46,312 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    done: Propofol seed=2  LZc=0.88645  PCI=0.3317
+2026-02-28 13:15:46,585 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:15:46,585 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    done: Propofol seed=4  LZc=0.89236  PCI=0.3959
+2026-02-28 13:15:51,463 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:15:51,464 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    done: Propofol seed=3  LZc=0.89279  PCI=0.3602
+    done: Propofol seed=0  LZc=0.90430  PCI=0.3713
+2026-02-28 13:15:53,786 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:15:53,786 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:15:53,793 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:15:53,793 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    done: Propofol seed=1  LZc=0.89336  PCI=0.4010
+2026-02-28 13:15:54,416 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:15:54,417 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    Propofol+DOI seed=0: mean FR = 2.86 Hz
+2026-02-28 13:19:21,516 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:19:21,518 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    Propofol+DOI seed=1: mean FR = 2.84 Hz
+2026-02-28 13:20:35,136 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:20:35,146 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    Propofol+DOI seed=3: mean FR = 2.91 Hz
+    DOI only seed=0: mean FR = 163.75 Hz
+    Propofol+DOI seed=2: mean FR = 2.85 Hz
+2026-02-28 13:20:57,023 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:20:57,025 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:20:57,044 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:20:57,049 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    Propofol+DOI seed=4: mean FR = 2.85 Hz
+2026-02-28 13:20:59,160 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:20:59,161 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:21:01,893 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:21:01,896 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    DOI only seed=1: mean FR = 163.77 Hz
+2026-02-28 13:21:29,895 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:21:29,904 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    DOI only seed=3: mean FR = 163.72 Hz
+    DOI only seed=2: mean FR = 163.74 Hz
+2026-02-28 13:21:42,959 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:21:42,968 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+2026-02-28 13:21:47,450 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:21:47,451 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse
+    DOI only seed=4: mean FR = 163.75 Hz
+2026-02-28 13:21:54,681 - INFO - tvb.simulator.history - history has n_time=661 n_cvar=1 n_node=68 n_nmode=1, requires 0.36 MB
+2026-02-28 13:21:54,683 - INFO - tvb.simulator.history - sparse history has n_nnzw=3830, i.e. 82.83 % sparse

@@ -1,0 +1,30 @@
+# Large simulation/reference code (not needed for workflow overview)
+code/paper_pipeline_hub/
+code/original_repos/
+code/simulated_serotonergic_receptors_tvb/
+code/figures/
+
+# Chrome profile (sensitive session data)
+chrome_profile_notebooklm/
+
+# Papers (PDFs)
+Papers/
+
+# Raw data
+data/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store

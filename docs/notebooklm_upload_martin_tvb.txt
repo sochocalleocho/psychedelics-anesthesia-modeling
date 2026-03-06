@@ -1,0 +1,900 @@
+================================================================================
+ANNOTATED SOURCE CODE COMPILATION: Martin et al. 2025 TVB Extensions
+Zerlaut_gK_gNa Model and Parameter Configuration
+================================================================================
+
+This document compiles Martin et al. 2025's TVB model code. Martin's key
+innovation is replacing E_L_e with g_K/g_Na conductances, computing
+effective E_L = (g_K*E_K + g_Na*E_Na) / (g_K + g_Na). This allows modeling
+ion channel changes (e.g., potassium conductance modulation) rather than
+directly changing the leak reversal potential.
+
+CRITICAL: E_L_e=-63 in the parameter file is VESTIGIAL. The actual effective
+E_L is computed from g_K_e=8.214, g_Na_e=1.786, E_K=-90, E_Na=50:
+  E_L = (8.214*(-90) + 1.786*50) / (8.214 + 1.786) = -65 mV
+
+The P_e and P_i polynomials in Martin's parameter file are the Di Volo 2019
+polynomials (NOT Sacha's CONFIG1 polynomials).
+
+================================================================================
+FILE: Zerlaut_gK_gNa.py
+SOURCE: Martin et al. 2025 (code/original_repos/martin_et_al_2025/tvbsim/TVB/tvb_model_reference/src/)
+ANNOTATION: Martin et al. 2025 -- TVB Zerlaut model variant using g_K/g_Na
+conductances instead of E_L_e directly. KEY DIFFERENCES from Sacha's Zerlaut.py:
+(1) g_L replaced by g_K + g_Na in mu_G computation, (2) E_L replaced by
+(g_K*E_K + g_Na*E_Na) in mu_V formula, (3) threshold_func uses TvN directly
+(no muGn term), (4) separate p_connect_e and p_connect_i, (5) K_ext_e/K_ext_i
+for external input connectivity. Contains both first-order and second-order
+models. The second-order model has 8 state variables:
+E, I, C_ee, C_ei, C_ii, W_e, W_i, noise.
+================================================================================
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Feb 24 10:32:01 2021
+
+@author: nuuria
+"""
+
+"""
+Mean field model based on Master equation about adaptative exponential leacky integrate and fire neurons population
+"""
+
+from tvb.simulator.models.base import Model,  numpy
+from tvb.basic.neotraits.api import NArray, Range, Final, List
+import scipy.special as sp_spec
+from numba import jit
+
+class Zerlaut_adaptation_first_order(Model):
+    r"""
+    **References**:
+    .. [ZD_2018]  Zerlaut, Y., Chemla, S., Chavane, F. et al. *Modeling mesoscopic cortical dynamics using a mean-field
+    model of conductance-based networks of adaptive
+    exponential integrate-and-fire neurons*,
+    J Comput Neurosci (2018) 44: 45. https://doi-org.lama.univ-amu.fr/10.1007/s10827-017-0668-2
+    .. [MV_2018]  Matteo di Volo, Alberto Romagnoni, Cristiano Capone, Alain Destexhe (2018)
+    *Mean-field model for the dynamics of conductance-based networks of excitatory and inhibitory spiking neurons
+    with adaptation*, bioRxiv, doi: https://doi.org/10.1101/352393
+
+    Used Eqns 4 from [MV_2018]_ in ``dfun``.
+
+    The default parameters are taken from table 1 of [ZD_2018]_, pag.47 and modify for the adaptation [MV_2018]
+    +---------------------------+------------+
+    |                 Table 1                |
+    +--------------+------------+------------+
+    |Parameter     |  Value     | Unit       |
+    +==============+============+============+
+    |             cellular property          |
+    +--------------+------------+------------+
+    | g_K_e        |   8.21     |   nS       |
+    +--------------+------------+------------+
+    | g_K_i        |   1.79     |   nS       |
+    +--------------+------------+------------+
+    | g_Na_e       |   8.21     |   nS       |
+    +--------------+------------+------------+
+    | g_Na_i       |   1.79     |   nS       |
+    +--------------+------------+------------+
+    | E_K_e        |  -90.00    |   mV       |
+    +--------------+------------+------------+
+    | E_K_i        |  -90.00    |   mV       |
+    +--------------+------------+------------+
+    | C_m          |   200.0    |   pF       |
+    +--------------+------------+------------+
+    | b            |   60.0     |   nS       |
+    +--------------+------------+------------+
+    | a            |   4.0      |   nS       |
+    +--------------+------------+------------+
+    | tau_w        |   500.0    |   ms       |
+    +--------------+------------+------------+
+    | T            |   20.0      |   ms       |
+    +--------------+------------+------------+
+    |          synaptic properties           |
+    +--------------+------------+------------+
+    | E_e          |    0.0     | mV         |
+    +--------------+------------+------------+
+    | E_i          |   -80.0    | mV         |
+    +--------------+------------+------------+
+    | Q_e          |    1.0     | nS         |
+    +--------------+------------+------------+
+    | Q_i          |    5.0     | nS         |
+    +--------------+------------+------------+
+    | tau_e        |    5.0     | ms         |
+    +--------------+------------+------------+
+    | tau_i        |    5.0     | ms         |
+    +--------------+------------+------------+
+    |          numerical network             |
+    +--------------+------------+------------+
+    | N_tot        |  10000     |            |
+    +--------------+------------+------------+
+    | p_connect    |    5.0 %   |            |
+    +--------------+------------+------------+
+    | g            |   20.0 %   |            |
+    +--------------+------------+------------+
+    | K_e_ext      |   400      |            |
+    +--------------+------------+------------+
+    | K_i_ext      |   0        |            |
+    +--------------+------------+------------+
+    |external_input|    0.000   | Hz         |
+    +--------------+------------+------------+
+
+    The default coefficients of the transfert function are taken from table I of [MV_2018]_, pag.49
+    +-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+
+    |      excitatory cell      |
+    +-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+
+    |  -4.98e-02  |   5.06e-03  |  -2.5e-02   |   1.4e-03   |  -4.1e-04   |   1.05e-02  |  -3.6e-02   |   7.4e-03   |   1.2e-03   |  -4.07e-02  |
+    +-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+
+    |      inhibitory cell      |
+    +-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+
+    |  -5.14e-02  |   4.0e-03   |  -8.3e-03   |   2.0e-04   |  -5.0e-04   |   1.4e-03   |  -1.46e-02  |   4.5e-03   |   2.8e-03   |  -1.53e-02  |
+    +-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+
+
+    """
+    _ui_name = "Zerlaut_adaptation_first_order"
+    ui_configurable_parameters = ['inh_factor', 'g_K_e', 'g_K_i', 'g_Na_e', 'g_Na_i',
+                                  'E_K_e', 'E_Na_e', 'E_K_i', 'E_Na_i', 'C_m', 'b', 'tau_w',
+                                  'E_e', 'E_i', 'Q_e', 'Q_i', 'tau_e', 'tau_i',
+                                  'N_tot', 'p_connect', 'g', 'T',
+                                  'external_input']
+
+    # Define traited attributes for this model, these represent possible kwargs.
+    inh_factor = NArray(
+            label=":math: inhibitory factor",
+            default=numpy.array([1]),
+            domain=Range(lo=0.5, hi=2.5, step=0.1),
+            doc="""Long range factor for input inhibitory signal to excitatory populations""")
+
+    g_K_e = NArray(
+        label=":math:`g_{K_{e}}`",
+        default=numpy.array([8.21]),
+        domain=Range(lo=0.1, hi=100.0, step=0.1),
+        doc="""potassium leak conductance excitatory neurons [nS]""")
+    g_Na_e = NArray(
+        label=":math:`g_{Na_{e}}`",
+        default=numpy.array([1.79]),
+        domain=Range(lo=0.1, hi=100.0, step=0.1),
+        doc="""sodium leak conductance excitatory neurons [nS]""")
+
+    g_K_i = NArray(
+        label=":math:`g_{K_{i}}`",
+        default=numpy.array([8.21]),
+        domain=Range(lo=0.1, hi=100.0, step=0.1),
+        doc="""potassium leak conductance inhibitory neurons [nS]""")
+    g_Na_i = NArray(
+        label=":math:`g_{Na_{i}}`",
+        default=numpy.array([1.79]),
+        domain=Range(lo=0.1, hi=100.0, step=0.1),
+        doc="""sodium leak conductance inhibitory neurons [nS]""")
+
+    E_K_e = NArray(
+        label=":math:`E_{L_{K}}`",
+        default=numpy.array([-90.0]),
+        domain=Range(lo=-90.0, hi=-50.0, step=0.1),
+        doc="""potassium leak reversal potential for excitatory [mV]""")
+    E_Na_e = NArray(
+        label=":math:`E_{L_{Na}}`",
+        default=numpy.array([50.0]),
+        domain=Range(lo=0.0, hi=100.0, step=0.1),
+        doc="""sodium leak reversal potential for excitatory [mV]""")
+
+    E_K_i = NArray(
+        label=":math:`E_{L_{K}}`",
+        default=numpy.array([-90.0]),
+        domain=Range(lo=-90.0, hi=-50.0, step=0.1),
+        doc="""potassium leak reversal potential for inhibitory [mV]""")
+    E_Na_i = NArray(
+        label=":math:`E_{L_{Na}}`",
+        default=numpy.array([50.0]),
+        domain=Range(lo=0.0, hi=100.0, step=0.1),
+        doc="""sodium leak reversal potential for inhibitory [mV]""")
+
+    C_m = NArray(
+        label=":math:`C_{m}`",
+        default=numpy.array([200.0]),
+        domain=Range(lo=10.0, hi=500.0, step=10.0),
+        doc="""membrane capacitance [pF]""")
+
+    b_e = NArray(
+        label=":math:`Excitatory b`",
+        default=numpy.array([60.0]),
+        domain=Range(lo=0.0, hi=150.0, step=1.0),
+        doc="""Excitatory adaptation current increment [pA]""")
+
+    a_e = NArray(
+        label=":math:`Excitatory a`",
+        default=numpy.array([4.0]),
+        domain=Range(lo=0.0, hi=20.0, step=0.1),
+        doc="""Excitatory adaptation conductance [nS]""")
+
+    b_i = NArray(
+        label=":math:`Inhibitory b`",
+        default=numpy.array([0.0]),
+        domain=Range(lo=0.0, hi=100.0, step=0.1),
+        doc="""Inhibitory adaptation current increment [pA]""")
+
+    a_i = NArray(
+        label=":math:`Inhibitory a`",
+        default=numpy.array([0.0]),
+        domain=Range(lo=0.0, hi=20.0, step=0.1),
+        doc="""Inhibitory adaptation conductance [nS]""")
+
+    tau_w_e = NArray(
+        label=":math:`tau_w_e`",
+        default=numpy.array([500.0]),
+        domain=Range(lo=1.0, hi=1000.0, step=1.0),
+        doc="""Adaptation time constant of excitatory neurons [ms]""")
+
+    tau_w_i = NArray(
+        label=":math:`tau_w_e`",
+        default=numpy.array([1.0]),
+        domain=Range(lo=1.0, hi=1000.0, step=1.0),
+        doc="""Adaptation time constant of inhibitory neurons [ms]""")
+
+    E_e = NArray(
+        label=r":math:`E_e`",
+        default=numpy.array([0.0]),
+        domain=Range(lo=-20., hi=20., step=0.01),
+        doc="""excitatory reversal potential [mV]""")
+
+    E_i = NArray(
+        label=":math:`E_i`",
+        default=numpy.array([-80.0]),
+        domain=Range(lo=-100.0, hi=-60.0, step=1.0),
+        doc="""inhibitory reversal potential [mV]""")
+
+    Q_e = NArray(
+        label=r":math:`Q_e`",
+        default=numpy.array([1.5]),
+        domain=Range(lo=0.0, hi=5.0, step=0.1),
+        doc="""excitatory quantal conductance [nS]""")
+
+    Q_i = NArray(
+        label=r":math:`Q_i`",
+        default=numpy.array([5.0]),
+        domain=Range(lo=0.0, hi=10.0, step=0.1),
+        doc="""inhibitory quantal conductance [nS]""")
+
+    tau_e = NArray(
+        label=":math:`\tau_e`",
+        default=numpy.array([5.0]),
+        domain=Range(lo=1.0, hi=10.0, step=1.0),
+        doc="""excitatory decay [ms]""")
+
+    tau_i = NArray(
+        label=":math:`\tau_i`",
+        default=numpy.array([5.0]),
+        domain=Range(lo=0.5, hi=10.0, step=0.01),
+        doc="""inhibitory decay [ms]""")
+
+    N_tot = NArray(
+        dtype=int,
+        label=":math:`N_{tot}`",
+        default=numpy.array([10000]),
+        domain=Range(lo=1000, hi=50000, step=1000),
+        doc="""cell number""")
+
+    p_connect_e = NArray(
+        label=":math:`\epsilon`",
+        default=numpy.array([0.05]),
+        domain=Range(lo=0.001, hi=0.2, step=0.001),
+        doc="""connectivity probability""")
+
+    p_connect_i = NArray(
+        label=":math:`\epsilon`",
+        default=numpy.array([0.05]),
+        domain=Range(lo=0.001, hi=0.2, step=0.001),
+        doc="""connectivity probability""")
+
+    g = NArray(
+        label=":math:`g`",
+        default=numpy.array([0.2]),
+        domain=Range(lo=0.01, hi=0.4, step=0.01),
+        doc="""fraction of inhibitory cells""")
+
+    K_ext_e = NArray(
+        dtype=int,
+        label=":math:`K_ext_e`",
+        default=numpy.array([400]),
+        domain=Range(lo=0, hi=10000, step=1),
+        doc="""Number of excitatory connexions from external population""")
+
+    K_ext_i = NArray(
+        dtype=int,
+        label=":math:`K_ext_i`",
+        default=numpy.array([0]),
+        domain=Range(lo=0, hi=10000, step=1),
+        doc="""Number of inhibitory connexions from external population""")
+
+    T = NArray(
+        label=":math:`T`",
+        default=numpy.array([20.0]),
+        domain=Range(lo=1., hi=20.0, step=0.1),
+        doc="""time scale of describing network activity""")
+
+    P_e = NArray(
+        label=":math:`P_e`",
+        default=numpy.array([-0.04983106,  0.005063550882777035,  -0.023470121807314552,
+                             0.0022951513725067503,
+                              -0.0004105302652029825,  0.010547051343547399,  -0.03659252821136933,
+                              0.007437487505797858,  0.001265064721846073, -0.04072161294490446]),
+        doc="""Polynome of excitatory phenomenological threshold (order 9)""")
+
+    P_i = NArray(
+        label=":math:`P_i`",
+        default=numpy.array([-0.05149122024209484,  0.004003689190271077, -0.008352013668528155,
+                             0.0002414237992765705,
+                              -0.0005070645080016026,  0.0014345394104282397, -0.014686689498949967,
+                            0.004502706285435741,
+                              0.0028472190352532454, -0.015357804594594548]),
+        doc="""Polynome of inhibitory phenomenological threshold (order 9)""")
+
+
+    external_input_ex_ex = NArray(
+        label=":math:`\nu_e^{drive}`",
+        default=numpy.array([0.000]),
+        domain=Range(lo=0.00, hi=0.1, step=0.001),
+        doc="""external drive""")
+
+    external_input_ex_in = NArray(
+        label=":math:`\nu_e^{drive}`",
+        default=numpy.array([0.000]),
+        domain=Range(lo=0.00, hi=0.1, step=0.001),
+        doc="""external drive""")
+
+    external_input_in_ex = NArray(
+        label=":math:`\nu_e^{drive}`",
+        default=numpy.array([0.000]),
+        domain=Range(lo=0.00, hi=0.1, step=0.001),
+        doc="""external drive""")
+
+    external_input_in_in = NArray(
+        label=":math:`\nu_e^{drive}`",
+        default=numpy.array([0.000]),
+        domain=Range(lo=0.00, hi=0.1, step=0.001),
+        doc="""external drive""")
+
+    tau_OU = NArray(
+        label=":math:`\ntau noise`",
+        default=numpy.array([5.0]),
+        domain=Range(lo=0.10, hi=10.0, step=0.01),
+        doc="""time constant noise""")
+
+    weight_noise =  NArray(
+        label=":math:`\nweight noise`",
+        default=numpy.array([10.5]),
+        domain=Range(lo=0., hi=50.0, step=1.0),
+        doc="""weight noise""")
+
+    state_variable_range = Final(
+        label="State Variable ranges [lo, hi]",
+        default={"E": numpy.array([0.0, 0.0]),
+                 "I": numpy.array([0.0, 0.0]),
+                 "W_e": numpy.array([0.0,0.0]),
+                 "W_i": numpy.array([0.0,0.0]),
+                 "noise": numpy.array([0.0,0.0]),
+                     },
+        doc="""State variable ranges.""")
+
+    variables_of_interest = List(
+        of=str,
+        label="Variables watched by Monitors",
+        choices=("E", "I","W_e","W_i","noise"),
+        default=("E",),
+        doc="""Default state-variables to monitor.""")
+
+    state_variable_boundaries = Final(
+        label="Firing rate of population is always positive",
+        default={"E": numpy.array([0.0, None]),
+                 "I": numpy.array([0.0, None])},
+        doc="""State variable boundaries.""")
+
+    state_variables = 'E I W_e W_i noise'.split()
+    _nvar = 5
+    cvar = numpy.array([0], dtype=int)
+
+    def dfun(self, state_variables, coupling, local_coupling=0.00):
+        r"""
+        First-order mean-field equations.
+        """
+        E = state_variables[0, :]
+        I = state_variables[1, :]
+        W_e = state_variables[2, :]
+        W_i = state_variables[3, :]
+        noise = state_variables[4, :]
+        derivative = numpy.empty_like(state_variables)
+
+        # long-range coupling
+        c_0 = coupling[0, :]
+
+        # short-range (local) coupling
+        lc_E = local_coupling * E
+        lc_I = local_coupling * I
+
+        # external firing rate
+        Fe_ext = c_0 + lc_E + self.weight_noise * noise
+        index_bad_input = numpy.where( Fe_ext*self.K_ext_e  < 0)
+        Fe_ext[index_bad_input] = 0.0
+        Fi_ext = lc_I
+
+        # Excitatory firing rate derivation
+        derivative[0] = (self.TF_excitatory(
+            E, I, Fe_ext + self.external_input_ex_ex,
+            Fi_ext + self.external_input_ex_in,
+            W_e, self.g_K_e, self.g_Na_e)-E)/self.T
+        # Inhibitory firing rate derivation
+        derivative[1] = (self.TF_inhibitory(
+            E, I, *Fe_ext + self.external_input_in_ex,
+            Fi_ext+self.external_input_in_in,
+            W_i, self.g_K_i, self.g_Na_i)-I)/self.T
+        # Adaptation excitatory
+        mu_V, sigma_V, T_V = self.get_fluct_regime_vars(
+                E, I, Fe_ext + self.external_input_ex_ex,
+                Fi_ext + self.external_input_ex_in,
+                W_e, self.Q_e, self.tau_e, self.E_e,
+                self.Q_i, self.tau_i, self.E_i,
+                self.g_K_e, self.g_Na_e, self.C_m, self.E_K_e, self.E_Na_e, self.N_tot,self.p_connect_e,
+                self.p_connect_i, self.g,self.K_ext_e,self.K_ext_i)
+        derivative[2] = -W_e/self.tau_w_e+self.b_e*E+self.a_e*(mu_V- (self.g_Na_e*self.E_Na_e + self.g_K_e*self.E_K_e)/(self.g_Na_e+self.g_K_e))/self.tau_w_e
+        # Adaptation inhibitory
+        mu_V, sigma_V, T_V = self.get_fluct_regime_vars(
+                E, I, Fe_ext + self.external_input_in_ex,
+                Fi_ext+self.external_input_in_in,
+                W_i, self.Q_e, self.tau_e, self.E_e,
+                self.Q_i, self.tau_i, self.E_i,
+                self.g_K_i, self.g_Na_i, self.C_m, self.E_K_i, self.E_Na_i, self.N_tot,self.p_connect_e,
+                self.p_connect_i, self.g,self.K_ext_e,self.K_ext_i)
+        derivative[3] = -W_i/self.tau_w_i+self.b_i*I+self.a_i*(mu_V-(self.g_Na_i*self.E_Na_i + self.g_K_i*self.E_K_i)/(self.g_Na_i+self.g_K_i))/self.tau_w_i
+        derivative[4] = -noise/self.tau_OU
+
+        return derivative
+
+    def TF_excitatory(self, fe, fi, fe_ext, fi_ext, W):
+        return self.TF(fe, fi, fe_ext, fi_ext, W, self.P_e, self.E_K_e, self.E_Na_e, self.g_K_e, self.g_Na_e)
+
+    def TF_inhibitory(self, fe, fi, fe_ext, fi_ext, W):
+        return self.TF(fe, fi, fe_ext, fi_ext, W, self.P_i, self.E_K_i, self.E_Na_i, self.g_K_i, self.g_Na_i)
+
+    def TF(self, fe, fi, fe_ext, fi_ext, W, P, E_K, E_Na, g_K, g_Na):
+        """
+        transfer function for population
+        """
+        mu_V, sigma_V, T_V = self.get_fluct_regime_vars(fe, fi, fe_ext, fi_ext, W, self.Q_e, self.tau_e, self.E_e,
+                                                           self.Q_i, self.tau_i, self.E_i,
+                                                           g_K, g_Na, self.C_m, E_K, E_Na, self.N_tot,
+                                                           self.p_connect_e,self.p_connect_i, self.g,self.K_ext_e,self.K_ext_i)
+        V_thre = self.threshold_func(mu_V, sigma_V, T_V*(g_K+g_Na)/self.C_m,
+                                     P[0], P[1], P[2], P[3], P[4], P[5], P[6], P[7], P[8], P[9])
+        V_thre *= 1e3  # the threshold need to be in mv and not in Volt
+        f_out = self.estimate_firing_rate(mu_V, sigma_V, T_V, V_thre)
+        return f_out
+
+    @staticmethod
+    @jit(nopython=True,cache=True)
+    def get_fluct_regime_vars(Fe, Fi, Fe_ext, Fi_ext, W, Q_e, tau_e, E_e, Q_i, tau_i, E_i, g_K, g_Na, C_m, E_K, E_Na, N_tot, p_connect_e,p_connect_i, g, K_ext_e, K_ext_i):
+        """
+        Compute the mean characteristic of neurons.
+        KEY: g_L is replaced by (g_K + g_Na), and E_L by weighted combination of E_K and E_Na.
+        """
+        # firing rate with spontaneous release term
+        fe = (Fe+1.0e-6)*(1.-g)*p_connect_e*N_tot + Fe_ext*K_ext_e
+        fi = (Fi+1.0e-6)*g*p_connect_i*N_tot + Fi_ext*K_ext_i
+
+        # conductance fluctuation and effective membrane time constant
+        mu_Ge, mu_Gi = Q_e*tau_e*fe, Q_i*tau_i*fi  # Eqns 5 from [MV_2018]
+        mu_G = g_Na+g_K+mu_Ge+mu_Gi  # Eqns 6 from [MV_2018]
+        T_m = C_m/mu_G # Eqns 6 from [MV_2018]
+
+        # membrane potential
+        mu_V = (mu_Ge*E_e+mu_Gi*E_i+g_K*E_K+g_Na*E_Na-W)/mu_G  # Eqns 7 from [MV_2018]
+        # post-synaptic membrane potential event s around muV
+        U_e, U_i = Q_e/mu_G*(E_e-mu_V), Q_i/mu_G*(E_i-mu_V)
+        # Standard deviation of the fluctuations
+        # Eqns 8 from [MV_2018]
+        sigma_V = numpy.sqrt(fe*(U_e*tau_e)**2/(2.*(tau_e+T_m))+fi*(U_i*tau_i)**2/(2.*(tau_i+T_m)))
+        # Autocorrelation-time of the fluctuations Eqns 9 from [MV_2018]
+        T_V_numerator = (fe*(U_e*tau_e)**2 + fi*(U_i*tau_i)**2)
+        T_V_denominator = (fe*(U_e*tau_e)**2/(tau_e+T_m) + fi*(U_i*tau_i)**2/(tau_i+T_m))
+        T_V = T_V_numerator/T_V_denominator
+        return mu_V, sigma_V, T_V
+
+    @staticmethod
+    @jit(nopython=True,cache=True)
+    def threshold_func(muV, sigmaV, TvN, P0, P1, P2, P3, P4, P5, P6, P7, P8, P9):
+        """
+        The threshold function of the neurons.
+        NOTE: Uses TvN = T_V * (g_K+g_Na) / C_m (not T_V * g_L / C_m as in Sacha's version).
+        Since g_K+g_Na = g_L, this is equivalent when g_K+g_Na = 10 nS.
+        """
+        # Normalization factors page 48 after the equation 4 from [ZD_2018]
+        muV0, DmuV0 = -60.0, 10.0
+        sV0, DsV0 = 4.0, 6.0
+        TvN0, DTvN0 = 0.5, 1.
+        V = (muV-muV0)/DmuV0
+        S = (sigmaV-sV0)/DsV0
+        T = (TvN-TvN0)/DTvN0
+        # Eqns 11 from [MV_2018]
+        return P0 + P1*V + P2*S + P3*T + P4*V**2 + P5*S**2 + P6*T**2 + P7*V*S + P8*V*T + P9*S*T
+
+    @staticmethod
+    def estimate_firing_rate(muV, sigmaV, Tv, Vthre):
+        """
+        Firing rate from erfc formula. Eqns 10 from [MV_2018]
+        """
+        return sp_spec.erfc((Vthre-muV) / (numpy.sqrt(2)*sigmaV)) / (2*Tv)
+
+
+class Zerlaut_adaptation_second_order(Zerlaut_adaptation_first_order):
+    r"""
+    Second-order mean-field model with covariance equations.
+    8 state variables: E, I, C_ee, C_ei, C_ii, W_e, W_i, noise.
+    """
+
+    _ui_name = "Zerlaut_adaptation_second_order"
+
+    state_variable_range = Final(
+        label="State Variable ranges [lo, hi]",
+        default={"E": numpy.array([0.0, 0.0]),
+                 "I": numpy.array([0.0, 0.0]),
+                 "C_ee": numpy.array([0.0, 0.0]),
+                 "C_ei": numpy.array([0.0, 0.0]),
+                 "C_ii": numpy.array([0.0, 0.0]),
+                 "W_e":numpy.array([0.0, 0.0]),
+                 "W_i":numpy.array([0.0, 0.0]),
+                 "noise":numpy.array([0.0, 0.0]),
+                 },
+        doc="""State variable ranges.""")
+
+    variables_of_interest = List(
+        of=str,
+        label="Variables watched by Monitors",
+        choices=("E", "I", "C_ee","C_ei","C_ii","W_e", "W_i","noise"),
+        default=("E",),
+        doc="""Default state-variables to monitor.""")
+
+    state_variables = 'E I C_ee C_ei C_ii W_e W_i noise'.split()
+    _nvar = 8
+
+    def dfun(self, state_variables, coupling, local_coupling=0.00):
+        r"""
+        Second-order mean-field equations with covariance terms.
+        """
+
+        #number of neurons
+        N_e = self.N_tot * (1-self.g)
+        N_i = self.N_tot * self.g
+        #state variable
+        E = state_variables[0, :]
+        I = state_variables[1, :]
+        C_ee = state_variables[2, :]
+        C_ei = state_variables[3, :]
+        C_ii = state_variables[4, :]
+        W_e = state_variables[5,:]
+        W_i = state_variables[6,:]
+        noise = state_variables[7,:]
+        derivative = numpy.empty_like(state_variables)
+
+        # long-range coupling
+        c_0 = coupling[0, :]
+
+        # short-range (local) coupling
+        lc_E = local_coupling * E
+        lc_I = local_coupling * I
+
+        # external firing rate for the different population
+        E_input_excitatory = c_0+lc_E+self.external_input_ex_ex + self.weight_noise * noise
+        index_bad_input = numpy.where(E_input_excitatory < 0)
+        E_input_excitatory[index_bad_input] = 0.0
+        E_input_inhibitory = self.inh_factor*(c_0+self.external_input_in_ex) + lc_E + self.weight_noise*noise
+        index_bad_input = numpy.where(E_input_inhibitory < 0)
+        E_input_inhibitory[index_bad_input] = 0.0
+        I_input_excitatory = lc_I+self.external_input_ex_in
+        I_input_inhibitory = lc_I+self.external_input_in_in
+
+        # Transfer function of excitatory and inhibitory neurons
+        _TF_e = self.TF_excitatory(E, I, E_input_excitatory, I_input_excitatory, W_e)
+        _TF_i = self.TF_inhibitory(E, I, E_input_inhibitory, I_input_inhibitory, W_i)
+
+        # Derivatives taken numerically : use a central difference formula with spacing `dx`
+        df = 1e-7
+        def _diff_fe(TF, fe, fi, fe_ext, fi_ext, W, df=df):
+            return (TF(fe+df, fi, fe_ext, fi_ext, W)-TF(fe-df, fi, fe_ext, fi_ext, W))/(2*df*1e3)
+
+        def _diff_fi(TF, fe, fi, fe_ext, fi_ext, W, df=df):
+            return (TF(fe, fi+df, fe_ext, fi_ext, W)-TF(fe, fi-df, fe_ext, fi_ext, W))/(2*df*1e3)
+
+        def _diff2_fe_fe_e(fe, fi, fe_ext, fi_ext, W, df=df):
+            TF = self.TF_excitatory
+            return (TF(fe+df, fi, fe_ext, fi_ext, W)-2*_TF_e+TF(fe-df, fi, fe_ext, fi_ext, W))/((df*1e3)**2)
+
+        def _diff2_fe_fe_i(fe, fi, fe_ext, fi_ext, W, df=df):
+            TF = self.TF_inhibitory
+            return (TF(fe+df, fi, fe_ext, fi_ext, W)-2*_TF_i+TF(fe-df, fi, fe_ext, fi_ext, W))/((df*1e3)**2)
+
+        def _diff2_fi_fe(TF, fe, fi, fe_ext, fi_ext, W, df=df):
+            return (_diff_fi(TF, fe+df, fi, fe_ext, fi_ext, W)-_diff_fi(TF, fe-df, fi, fe_ext, fi_ext, W))/(2*df*1e3)
+
+        def _diff2_fe_fi(TF, fe, fi, fe_ext, fi_ext, W, df=df):
+            return (_diff_fe(TF, fe, fi+df, fe_ext, fi_ext, W)-_diff_fe(TF, fe, fi-df, fe_ext, fi_ext, W))/(2*df*1e3)
+
+        def _diff2_fi_fi_e(fe, fi, fe_ext, fi_ext, W, df=df):
+            TF = self.TF_excitatory
+            return (TF(fe, fi+df, fe_ext, fi_ext, W)-2*_TF_e+TF(fe, fi-df, fe_ext, fi_ext, W))/((df*1e3)**2)
+
+        def _diff2_fi_fi_i(fe, fi, fe_ext, fi_ext, W, df=df):
+            TF = self.TF_inhibitory
+            return (TF(fe, fi+df, fe_ext, fi_ext, W)-2*_TF_i+TF(fe, fi-df, fe_ext, fi_ext, W))/((df*1e3)**2)
+
+        #Precompute some result
+        _diff_fe_TF_e = _diff_fe(self.TF_excitatory, E, I, E_input_excitatory, I_input_excitatory, W_e)
+        _diff_fe_TF_i = _diff_fe(self.TF_inhibitory, E, I, E_input_inhibitory, I_input_inhibitory, W_i)
+        _diff_fi_TF_e = _diff_fi(self.TF_excitatory, E, I, E_input_excitatory, I_input_excitatory, W_e)
+        _diff_fi_TF_i = _diff_fi(self.TF_inhibitory, E, I, E_input_inhibitory, I_input_inhibitory, W_i)
+
+        # Excitatory firing rate derivation
+        derivative[0] = (_TF_e - E
+                         + .5*C_ee*_diff2_fe_fe_e( E, I, E_input_excitatory, I_input_excitatory, W_e)
+                         + .5*C_ei*_diff2_fe_fi(self.TF_excitatory, E, I, E_input_excitatory, I_input_excitatory, W_e)
+                         + .5*C_ei*_diff2_fi_fe(self.TF_excitatory, E, I, E_input_excitatory, I_input_excitatory, W_e)
+                         + .5*C_ii*_diff2_fi_fi_e( E, I, E_input_excitatory, I_input_excitatory, W_e)
+                         )/self.T
+        # Inhibitory firing rate derivation
+        derivative[1] = (_TF_i - I
+                         + .5*C_ee*_diff2_fe_fe_i( E, I, E_input_inhibitory, I_input_inhibitory, W_i)
+                         + .5*C_ei*_diff2_fe_fi(self.TF_inhibitory, E, I, E_input_inhibitory, I_input_inhibitory, W_i)
+                         + .5*C_ei*_diff2_fi_fe(self.TF_inhibitory, E, I, E_input_inhibitory, I_input_inhibitory, W_i)
+                         + .5*C_ii*_diff2_fi_fi_i( E, I, E_input_inhibitory, I_input_inhibitory, W_i)
+                         )/self.T
+        # Covariance excitatory-excitatory derivation
+        derivative[2] = (_TF_e*(1./self.T-_TF_e)/N_e
+                         + (_TF_e-E)**2
+                         + 2.*C_ee*_diff_fe_TF_e
+                         + 2.*C_ei*_diff_fi_TF_i
+                         - 2.*C_ee
+                         )/self.T
+        # Covariance excitatory-inhibitory derivation
+        derivative[3] = ((_TF_e-E)*(_TF_i-I)
+                         + C_ee*_diff_fe_TF_e
+                         + C_ei*_diff_fe_TF_i
+                         + C_ei*_diff_fi_TF_e
+                         + C_ii*_diff_fi_TF_i
+                         - 2.*C_ei
+                         )/self.T
+        # Covariance inhibitory-inhibitory derivation
+        derivative[4] = (_TF_i*(1./self.T-_TF_i)/N_i
+                         + (_TF_i-I)**2
+                         + 2.*C_ii*_diff_fi_TF_i
+                         + 2.*C_ei*_diff_fe_TF_e
+                         - 2.*C_ii
+                         )/self.T
+        # Adaptation excitatory
+        mu_V, sigma_V, T_V = self.get_fluct_regime_vars(
+                E, I,
+                E_input_excitatory,
+                I_input_excitatory,
+                W_e, self.Q_e, self.tau_e, self.E_e,
+                self.Q_i, self.tau_i, self.E_i,
+                self.g_K_e, self.g_Na_e, self.C_m, self.E_K_e, self.E_Na_e, self.N_tot,
+                self.p_connect_e, self.p_connect_i, self.g,self.K_ext_e,self.K_ext_i)
+
+        derivative[5] = -W_e/self.tau_w_e+self.b_e*E+self.a_e*(mu_V-(self.g_Na_e*self.E_Na_e + self.g_K_e*self.E_K_e)/(self.g_Na_e+self.g_K_e))/self.tau_w_e
+
+        # Adaptation inhibitory
+        mu_V, sigma_V, T_V = self.get_fluct_regime_vars(
+                E, I,
+                E_input_inhibitory,
+                I_input_inhibitory,
+                W_i, self.Q_e, self.tau_e, self.E_e,
+                self.Q_i, self.tau_i, self.E_i,
+                self.g_K_i, self.g_Na_i, self.C_m, self.E_K_i, self.E_Na_i, self.N_tot,
+                self.p_connect_e, self.p_connect_i, self.g,self.K_ext_e,self.K_ext_i)
+        derivative[6] = -W_i/self.tau_w_i+self.b_i*I+self.a_i*(mu_V-(self.g_Na_i*self.E_Na_i + self.g_K_i*self.E_K_i)/(self.g_Na_i+self.g_K_i))/self.tau_w_i
+        derivative[7] = -noise/self.tau_OU
+        return derivative
+
+
+================================================================================
+FILE: parameter_M_Berlin_new.py
+SOURCE: Martin et al. 2025 (code/original_repos/martin_et_al_2025/tvbsim/TVB/tvb_model_reference/simulation_file/parameter/)
+ANNOTATION: Martin et al. 2025 -- Parameter file. IMPORTANT: E_L_e=-63 is
+vestigial; actual E_L=-65 computed from g_K_e=8.214. The effective leak
+reversal is: E_L = (g_K*E_K + g_Na*E_Na)/(g_K+g_Na) =
+(8.214*(-90) + 1.786*50)/(8.214+1.786) = -65 mV. P_e/P_i are the Di Volo
+2019 polynomials, NOT Sacha's CONFIG1 polynomials. Key production settings:
+b_e=5, a_e=0, coupling_a=0.3, weight_noise=1e-4, external_input=0.315e-3 KHz,
+Heun integrator with dt=0.1ms, nsig=[0,0,0,0,0,0,0,1.0] (noise on OU only),
+initial condition W_e=100.
+================================================================================
+import os
+
+class Parameters:
+    def __init__(self,
+         parameter_simulation=None,
+         parameter_model=None,
+         parameter_connection_between_region=None,
+         parameter_coupling=None,
+         parameter_integrator=None,
+         parameter_monitor=None,
+         parameter_stimulus=None,
+         **kwargs):
+
+        if parameter_simulation is not None:
+            self.parameter_simulation = parameter_simulation
+            self.parameter_model = parameter_model
+            self.parameter_connection_between_region = parameter_connection_between_region
+            self.parameter_coupling = parameter_coupling
+            self.parameter_integrator = parameter_integrator
+            self.parameter_monitor = parameter_monitor
+            self.parameter_stimulus = parameter_stimulus
+            return
+
+        path = os.path.dirname(os.path.abspath(__file__))
+        self.parameter_simulation={
+            'path_result':'./result/synch/',
+            'seed':10, # the seed for the random generator
+            'save_time': 1000.0, # the time of simulation in each file
+        }
+
+        self.parameter_model ={
+            'matteo':False,
+            'gK_gNa':True,
+            #order of the model
+            'order':2,
+            #parameter of the model
+            'inh_factor':1.,
+            'E_Na_e':50.,
+            'E_Na_i':50.,
+            'E_K_e':-90.,
+            'E_K_i':-90.,
+            'g_L':10.0,
+            'g_K_e':8.214285714285714,
+            'g_Na_e':1.7857142857142865,
+            'g_K_i':8.214285714285714,
+            'g_Na_i':1.7857142857142865,
+            'E_L_e':-63.0,
+            'E_L_i':-65.0,
+            'C_m':200.0,
+            'b_e':5.0, # 60
+            'a_e':0.0, # 4.0
+            'b_i':0.0,
+            'a_i':0.0,
+            'tau_w_e':500.0,
+            'tau_w_i':1.0,
+            'E_e':0.0,
+            'E_i':-80.0,
+            'Q_e':1.5, # 1.25
+            'Q_i':5.0,
+            'tau_e_e':5.0,
+            'tau_e_i':5.0,
+            'tau_i':5.0,
+            'N_tot':10000,
+            'p_connect_e':0.05,
+            'p_connect_i':0.05,
+            'g':0.2,
+            'T':20.0, # 5
+            'P_e': [-0.04983106, 0.00506355, -0.02347012, 0.00229515, -0.00041053, 0.01054705, -0.03659253, 0.00743749, 0.00126506, -0.04072161],
+            'P_i': [-0.05149122, 0.00400369, -0.00835201, 0.00024142, -0.00050706, 0.00143454, -0.01468669, 0.00450271, 0.00284722, -0.0153578],
+            'external_input_ex_ex':0.315*1e-3, # KHz
+            'external_input_ex_in':0.000,
+            'external_input_in_ex':0.315*1e-3,
+            'external_input_in_in':0.000,
+            'tau_OU':5.0,
+            'weight_noise': 1e-4,#10.5*1e-5, #1e-4, #10.5*1e-5,
+            'K_ext_e':400,
+            'K_ext_i':0,
+            #Initial condition :
+            'initial_condition':{
+                "E": [0.000, 0.000],"I": [0.00, 0.00],"C_ee": [0.0,0.0],"C_ei": [0.0,0.0],"C_ii": [0.0,0.0],"W_e": [100.0, 100.0],"W_i": [0.0,0.0],"noise":[0.0,0.0]}
+        }
+
+        self.parameter_connection_between_region={
+            ## CONNECTIVITY
+            # connectivity by default
+            'default':False,
+            #from file (repertory with following files : tract_lengths.npy and weights.npy)
+            'from_file':True,
+            'from_h5':False,
+            'path':path+'/../../data/connectivity',
+            'conn_name':'connectivity_68.zip',
+            # File description
+            'number_of_regions':0, # number of regions
+            # lenghts of tract between region : dimension => (number_of_regions, number_of_regions)
+            'tract_lengths':[],
+            # weight along the tract : dimension => (number_of_regions, number_of_regions)
+            'weights':[],
+            # speed of along long range connection
+            'speed':4.0,
+            'normalised':True,
+            'nullify_diagonals':True,
+            # disconnect certain regions
+            'disconnect_regions':[],
+        }
+
+        self.parameter_coupling={
+            ##COUPLING
+            'type':'Linear', # choice : Linear, Scaling, HyperbolicTangent, Sigmoidal, SigmoidalJansenRit, PreSigmoidal, Difference, Kuramoto
+            'coupling_parameter':{
+                    'a':0.3,
+                    'b':0.0}
+        }
+
+        self.parameter_integrator={
+            ## INTEGRATOR
+            'type':'Heun', # choice : Heun, Euler
+            'stochastic':True,
+            'noise_type': 'Additive', #'Multiplicative', #'Additive', # choice : Additive
+            'noise_parameter':{
+                'nsig':[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+                'ntau':0.0,
+                'dt': 0.1
+                                },
+            'dt': 0.1 # in ms
+        }
+
+        self.parameter_monitor= {
+            'Raw':True,
+            'parameter_Raw':{
+                'variables_of_interest':[0]},
+            'TemporalAverage':False,
+            'parameter_TemporalAverage':{
+                'variables_of_interest':[0],
+                'period':self.parameter_integrator['dt']*10.0},
+            'Bold':False,
+            'parameter_Bold':{
+                'variables_of_interest':[0],
+                'period':self.parameter_integrator['dt']*20000.0},
+            'Ca':False,
+            'parameter_Ca':{
+                'variables_of_interest':[0,1,2],
+                'tau_rise':0.01,
+                'tau_decay':0.1}
+        }
+
+
+        self.parameter_stimulus = {
+            'stimtime': 99.0,
+            "stimdur": 9.0,
+            "stimperiod": 1e9,
+            "stimregion": None,
+            "stimval":0.,
+            "stimvariables":[0]
+        }
+
+    def __eq__(self, other):
+        if isinstance(other, Parameters):
+            return (
+                    self.parameter_model == other.parameter_model and
+                    self.parameter_connection_between_region == other.parameter_connection_between_region and
+                    self.parameter_coupling == other.parameter_coupling and
+                    self.parameter_integrator == other.parameter_integrator and
+                    self.parameter_monitor == other.parameter_monitor and
+                    self.parameter_stimulus == other.parameter_stimulus
+                    )
+        if isinstance(other, dict):
+            return (
+                dict_inclusion_except(self.parameter_simulation, other['parameter_simulation'], ['path_result']) and
+                self.parameter_model == other['parameter_model'] and
+                self.parameter_connection_between_region == other['parameter_connection_between_region'] and
+                self.parameter_coupling == other['parameter_coupling'] and
+                self.parameter_integrator == other['parameter_integrator'] and
+                self.parameter_monitor == other['parameter_monitor'] and
+                self.parameter_stimulus == other['parameter_stimulus']
+                )
+        raise NotImplementedError
+
+    @classmethod
+    def from_dict(cls, d):
+        return cls(**d)
+
+def dict_inclusion_except(d1, d2, exceptions):
+    """
+        This checks that all keys of dictionary d1 are in dictionary d2 except exceptions
+    """
+    for k,v in d1.items():
+        if k in exceptions:
+            pass
+        if k not in d2:
+            return False
+    return True
+
+================================================================================
+END OF DOCUMENT
+================================================================================
